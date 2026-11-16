@@ -186,7 +186,7 @@ textarea { resize: vertical; line-height: 1.5; }
 .badge { display: inline-block; margin-left: 8px; padding: 1px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: .8rem; font-weight: 700; }
 .tabs {
   position: sticky; top: calc(env(safe-area-inset-top, 0px) + 61px); z-index: 10;
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 6px;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 6px;
   border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow);
 }
 .tabs button { display: grid; gap: 1px; padding: 8px 10px; border: 0; border-radius: 10px; background: none; text-align: center; }
@@ -264,11 +264,6 @@ mjx-assistive-mml { position: absolute !important; top: 0; left: 0; width: 1px !
 .score, .tabular { font-variant-numeric: tabular-nums; }
 .bar { height: 8px; margin-top: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .bar > span { display: block; height: 100%; border-radius: 999px; background: var(--accent); transition: width .3s ease; }
-.timer { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
-.timer .bar { flex: 1; margin: 0; }
-.timer .bar > span { background: var(--good); transition: width .1s linear; }
-.timer.low .bar > span { background: var(--bad); }
-.timer b { min-width: 34px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: .85rem; text-align: center; font-variant-numeric: tabular-nums; }
 .quiz-question { display: grid; gap: 10px; justify-items: center; margin: 20px 0; padding: 28px 22px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); text-align: center; }
 .quiz-question h2 { font: 700 clamp(1.15rem, 3vw, 1.5rem)/1.35 var(--display); text-wrap: balance; }
 .topic-chip { padding: 1px 12px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); font-size: .8rem; font-weight: 700; }
@@ -312,12 +307,32 @@ mjx-assistive-mml { position: absolute !important; top: 0; left: 0; width: 1px !
 .missed-line.wrong > b { color: var(--bad); } .missed-line.right > b { color: var(--good); }
 .missed-why { color: var(--ink-2); font-size: .95rem; }
 
+/* Notes and classes */
+.notes-wrap { max-width: 76ch; margin: 0 auto; display: grid; gap: 10px; }
+.notes-wrap textarea, .class-notes textarea { min-height: 320px; font-size: 1.02rem; line-height: 1.6; }
+.class-notes textarea { min-height: 180px; }
+.notes-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+.notes-head h2 { font: 700 1.3rem/1.2 var(--display); }
+.class-pick { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: .9rem; max-width: 340px; }
+.class-pick input { min-height: 36px; }
+.lib-class { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; margin-top: 8px; padding: 4px 2px; border: 0; background: none; font: 700 1rem/1.2 var(--display); text-align: left; }
+.lib-class span { font: 400 .82rem var(--body); color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.class-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.class-col { display: grid; gap: 14px; min-width: 0; }
+.set-row { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); text-align: left; width: 100%; }
+.set-row strong { font: 700 1.05rem/1.25 var(--display); }
+.set-row span { font-size: .88rem; color: var(--ink-2); }
+.note-card { display: grid; gap: 6px; padding: 12px 14px; border-left: 4px solid var(--accent); border-radius: 0 10px 10px 0; background: var(--surface); }
+.note-card pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.quiz-note { padding: 10px 14px; border-radius: 10px; background: var(--bad-soft); color: var(--bad); font-size: .95rem; }
+
 /* Small screens */
 @media (max-width: 900px) {
   .home { grid-template-columns: minmax(0, 1fr); }
   .library { position: static; }
   .document-layout { grid-template-columns: minmax(0, 1fr); }
   .toc { display: none; }
+  .class-grid { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 600px) {
   .page { padding-block: 18px 60px; }
@@ -452,6 +467,11 @@ mjx-assistive-mml { position: absolute !important; top: 0; left: 0; width: 1px !
             </div>
           </div>
         </div>
+        <label class="field" for="course">
+          <span>Class <span class="muted">(optional, keeps this set with the rest of that class)</span></span>
+          <input id="course" type="text" maxlength="60" list="course-list" placeholder="e.g. Biology">
+        </label>
+        <datalist id="course-list"></datalist>
         <label class="field" for="focus">
           <span>Anything to focus on? <span class="muted">(optional)</span></span>
           <input id="focus" type="text" maxlength="600" placeholder="e.g. Test Friday, I'm shaky on the Krebs cycle">
@@ -478,6 +498,7 @@ mjx-assistive-mml { position: absolute !important; top: 0; left: 0; width: 1px !
   <header class="study-head">
     <h1 id="study-title">New study set</h1>
     <p class="muted" id="study-sources"></p>
+    <label class="class-pick" for="study-course">Class <input id="study-course" type="text" maxlength="60" list="course-list" placeholder="Add to a class"></label>
     <div id="study-notices" style="display: grid; gap: 8px"></div>
   </header>
 
@@ -494,11 +515,39 @@ mjx-assistive-mml { position: absolute !important; top: 0; left: 0; width: 1px !
       <span class="tab-label"><span class="tab-long">Practice quiz</span><span class="tab-short">Quiz</span><span class="dot"></span></span>
       <span class="tab-blurb">Test yourself</span>
     </button>
+    <button role="tab" id="tab-notes" aria-controls="panel-notes" aria-selected="false" data-kind="notes" aria-label="My notes">
+      <span class="tab-label"><span class="tab-long">My notes</span><span class="tab-short">Notes</span></span>
+      <span class="tab-blurb">In your own words</span>
+    </button>
   </div>
 
   <section class="tab-panel" role="tabpanel" id="panel-lesson" aria-labelledby="tab-lesson"></section>
   <section class="tab-panel" role="tabpanel" id="panel-review" aria-labelledby="tab-review" hidden></section>
   <section class="tab-panel" role="tabpanel" id="panel-quiz" aria-labelledby="tab-quiz" hidden></section>
+  <section class="tab-panel" role="tabpanel" id="panel-notes" aria-labelledby="tab-notes" hidden></section>
+</main>
+
+<main class="page" id="class-view" hidden>
+  <header class="study-head">
+    <p class="eyebrow">Class</p>
+    <h1 id="class-title"></h1>
+    <p class="muted" id="class-meta"></p>
+  </header>
+  <div class="class-grid">
+    <div class="class-col">
+      <div class="notes-head"><h2>Study sets</h2><button class="btn btn-small btn-primary" id="class-new" type="button">New study set for this class</button></div>
+      <div class="class-col" id="class-sets"></div>
+    </div>
+    <div class="class-col">
+      <div class="class-notes class-col">
+        <div class="notes-head"><h2>Class notes</h2><span class="muted small" id="class-notes-status"></span></div>
+        <label class="field" for="class-notes-text"><span class="muted">Anything for the whole class: test dates, what the teacher stressed, things to ask.</span>
+          <textarea id="class-notes-text" placeholder="Write class notes here…"></textarea></label>
+      </div>
+      <div class="notes-head"><h2>Notes from your study sets</h2></div>
+      <div class="class-col" id="class-set-notes"></div>
+    </div>
+  </div>
 </main>
 
 <script>
@@ -510,8 +559,8 @@ mjx-assistive-mml { position: absolute !important; top: 0; left: 0; width: 1px !
 // ---------------------------------------------------------------------------
 const $ = (sel) => document.querySelector(sel);
 const KINDS = ["lesson", "review", "quiz"];
+const TABS = [...KINDS, "notes"];
 const LETTERS = ["A", "B", "C", "D"];
-const SECONDS = 25;
 const MAX_FILES = 40;
 const PROMPT_BUDGET = 250_000; // bytes; the platform cap is 256 KiB per call
 
@@ -705,6 +754,9 @@ function buildInput(job, kind) {
     lines.push("");
   }
   lines.push("---", "", TASKS[kind](job.quizLength));
+  if (kind === "quiz" && job.avoid?.length) {
+    lines.push("", "The student has already played the questions listed below, so this must be a completely NEW quiz. Don't reuse or reword any of them. Test facts and ideas they didn't cover, and where an important idea has to come up again, come at it from a different angle with a new scenario, new numbers or a new example.", "", "<already_asked>", ...job.avoid.map((q) => "- " + q), "</already_asked>");
+  }
   return lines.join("\n");
 }
 
@@ -857,6 +909,8 @@ const state = {
   limits: null,
   downloads: null,
   sets: [],
+  classNotes: {},
+  classOpen: null,
   storeMode: "pending",
   view: "home",
   current: null, // the study set on screen
@@ -890,10 +944,17 @@ claudeApi?.use("downloads").then((d) => { state.downloads = d; if (state.view ==
 let setsColl = null;
 const writeChains = new Map();
 
-async function initStore() {
-  const localSets = recall(LOCAL_SETS_KEY, []);
-  state.sets = Array.isArray(localSets) ? localSets : [];
+const isClassDoc = (d) => d?.type === "class";
+function adopt(docs) {
+  state.sets = docs.filter((d) => !isClassDoc(d));
+  state.classNotes = Object.fromEntries(docs.filter(isClassDoc).map((d) => [d.id, d]));
   renderLibrary();
+  if (state.view === "class") renderClass();
+}
+
+async function initStore() {
+  const localDocs = recall(LOCAL_SETS_KEY, []);
+  adopt(Array.isArray(localDocs) ? localDocs : []);
   const db = claudeApi ? await claudeApi.use("db").catch(() => null) : null;
   const user = db ? await claudeApi.use("user").catch(() => null) : null;
   const uid = user ? await user.id().catch(() => null) : null;
@@ -905,30 +966,48 @@ async function initStore() {
     if (!snap.metadata.fromCache) clearTimeout(timer);
     const remote = snap.docs.filter((d) => d.exists).map((d) => ({ id: d.id, ...d.data() }));
     const ids = new Set(remote.map((s) => s.id));
-    // Sets saved in this browser before the store was reachable stay listed.
-    state.sets = [...remote, ...recall(LOCAL_SETS_KEY, []).filter((s) => !ids.has(s.id))];
-    renderLibrary();
+    // Anything saved in this browser before the store was reachable stays listed.
+    adopt([...remote, ...recall(LOCAL_SETS_KEY, []).filter((s) => !ids.has(s.id))]);
   }, () => { clearTimeout(timer); state.storeMode = "local"; renderLibrary(); });
 }
 
-function saveLocal(set) {
-  const list = recall(LOCAL_SETS_KEY, []).filter((s) => s.id !== set.id);
-  list.unshift(set);
+function saveLocal(doc) {
+  const list = recall(LOCAL_SETS_KEY, []).filter((s) => s.id !== doc.id);
+  list.unshift(doc);
   while (list.length && !store(LOCAL_SETS_KEY, list)) list.pop();
+}
+
+function persist(doc) {
+  const prev = writeChains.get(doc.id) ?? Promise.resolve();
+  const next = prev.then(async () => {
+    if (state.storeMode === "db" && setsColl) {
+      try { await setsColl.doc(doc.id).set(doc); return; } catch { /* fall back below */ }
+    }
+    saveLocal(doc);
+  });
+  writeChains.set(doc.id, next.catch(() => {}));
 }
 
 function saveSet(set) {
   const clean = JSON.parse(JSON.stringify(set));
   state.sets = [clean, ...state.sets.filter((s) => s.id !== set.id)];
   renderLibrary();
-  const prev = writeChains.get(set.id) ?? Promise.resolve();
-  const next = prev.then(async () => {
-    if (state.storeMode === "db" && setsColl) {
-      try { await setsColl.doc(set.id).set(clean); return; } catch { /* fall back below */ }
-    }
-    saveLocal(clean);
-  });
-  writeChains.set(set.id, next.catch(() => {}));
+  persist(clean);
+}
+
+/** Changes fields on the set on screen and on its saved copy. */
+function updateSetField(set, patch) {
+  Object.assign(set, patch);
+  if (state.job && state.job.set !== set && state.job.set.id === set.id) Object.assign(state.job.set, patch);
+  const stored = state.sets.find((s) => s.id === set.id);
+  if (stored) saveSet({ ...stored, ...patch });
+  return Boolean(stored);
+}
+
+function saveClassNotes(name, notes) {
+  const doc = { id: "class-" + slug(name), type: "class", name, notes };
+  state.classNotes[doc.id] = doc;
+  persist(doc);
 }
 
 function deleteSet(id) {
@@ -936,6 +1015,14 @@ function deleteSet(id) {
   store(LOCAL_SETS_KEY, recall(LOCAL_SETS_KEY, []).filter((s) => s.id !== id));
   if (state.storeMode === "db" && setsColl) setsColl.doc(id).delete().catch(() => {});
   renderLibrary();
+}
+
+const courseOf = (s) => (s.course ?? "").trim();
+function courseNames() {
+  const names = new Map();
+  for (const s of state.sets) if (courseOf(s)) names.set(courseOf(s).toLowerCase(), courseOf(s));
+  for (const c of Object.values(state.classNotes)) if (c.name && !names.has(c.name.toLowerCase())) names.set(c.name.toLowerCase(), c.name);
+  return [...names.values()].sort((a, b) => a.localeCompare(b));
 }
 
 // ---------------------------------------------------------------------------
@@ -1069,12 +1156,14 @@ function renderLibrary() {
   const note = $("#lib-note");
   const sets = [...state.sets].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
   note.hidden = sets.length > 0;
-  if (!sets.length) note.textContent = state.storeMode === "pending" ? "Loading…" : "Study sets you create are saved here so you can come back to them.";
-  ul.replaceChildren(...sets.map((s) => {
+  if (!sets.length) note.textContent = state.storeMode === "pending" ? "Loading…" : "Study sets you create are saved here, grouped by class, so you can come back to them.";
+  $("#course-list").replaceChildren(...courseNames().map((n) => h("option", { value: n })));
+  const row = (s) => {
     const meta = [
       new Date(s.createdAt ?? Date.now()).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
       s.quiz ? `${s.quiz.questions.length} questions` : "",
       s.bestScore ? `best ${s.bestScore.correct}/${s.bestScore.total}` : "",
+      s.notes?.trim() ? "notes" : "",
     ].filter(Boolean).join(" · ");
     const confirming = state.pendingDelete === s.id;
     return h("li", {},
@@ -1085,8 +1174,60 @@ function renderLibrary() {
             h("button", { type: "button", onclick: () => { state.pendingDelete = null; renderLibrary(); } }, "Keep"))
         : h("button", { class: "icon-btn", type: "button", "aria-label": `Delete ${s.title}`, onclick: () => { state.pendingDelete = s.id; renderLibrary(); } }, "×"),
     );
-  }));
+  };
+  const items = [];
+  for (const name of courseNames()) {
+    const mine = sets.filter((s) => courseOf(s).toLowerCase() === name.toLowerCase());
+    items.push(h("li", { style: "border: 0; background: none" }, h("button", { class: "lib-class", type: "button", onclick: () => openClass(name) }, name, h("span", {}, "Open class"))));
+    items.push(...mine.map(row));
+  }
+  const loose = sets.filter((s) => !courseOf(s));
+  if (loose.length && items.length) items.push(h("li", { style: "border: 0; background: none" }, h("span", { class: "lib-class" }, "No class yet")));
+  items.push(...loose.map(row));
+  ul.replaceChildren(...items);
 }
+
+// ---------------------------------------------------------------------------
+// Class page: a class's study sets and notes in one place
+// ---------------------------------------------------------------------------
+function openClass(name) {
+  state.classOpen = name;
+  $("#class-notes-text").value = state.classNotes["class-" + slug(name)]?.notes ?? "";
+  $("#class-notes-status").textContent = "";
+  renderClass();
+  showView("class");
+}
+
+function renderClass() {
+  const name = state.classOpen;
+  if (!name) return;
+  const sets = state.sets.filter((s) => courseOf(s).toLowerCase() === name.toLowerCase()).sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  $("#class-title").textContent = name;
+  $("#class-meta").textContent = `${sets.length} study set${sets.length === 1 ? "" : "s"}`;
+  $("#class-sets").replaceChildren(...(sets.length ? sets.map((s) => h("button", { class: "set-row", type: "button", onclick: () => openSet(s) },
+    h("strong", {}, s.title || "Study set"),
+    h("span", {}, [
+      new Date(s.createdAt ?? Date.now()).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      s.lesson ? "lesson" : "", s.review ? "review" : "",
+      s.quiz ? `${s.quiz.questions.length}-question quiz` : "",
+      s.bestScore ? `best ${s.bestScore.correct}/${s.bestScore.total}` : "",
+    ].filter(Boolean).join(" · ")))) : [h("p", { class: "muted" }, "No study sets in this class yet.")]));
+  const noted = sets.filter((s) => s.notes?.trim());
+  $("#class-set-notes").replaceChildren(...(noted.length ? noted.map((s) => h("div", { class: "note-card" },
+    h("button", { class: "link", type: "button", style: "justify-self: start", onclick: () => { openSet(s); setTab("notes"); } }, s.title || "Study set"),
+    h("pre", {}, s.notes.trim()))) : [h("p", { class: "muted" }, "Notes you write inside a study set show up here.")]));
+  const area = $("#class-notes-text");
+  if (document.activeElement !== area) area.value = state.classNotes["class-" + slug(name)]?.notes ?? "";
+}
+
+function debounceSave(area, status, save) {
+  let t = null;
+  const flush = () => { if (t === null) return; clearTimeout(t); t = null; status.textContent = save(area.value) ? "Saved" : "Saved with the study set when it finishes"; };
+  area.addEventListener("input", () => { status.textContent = "Saving…"; clearTimeout(t); t = setTimeout(flush, 700); });
+  area.addEventListener("blur", flush);
+}
+debounceSave($("#class-notes-text"), $("#class-notes-status"), (v) => { if (state.classOpen) saveClassNotes(state.classOpen, v); return true; });
+$("#class-new").addEventListener("click", () => { $("#course").value = state.classOpen ?? ""; showCreateError(""); showView("home"); });
 
 // ---------------------------------------------------------------------------
 // Views
@@ -1095,18 +1236,24 @@ function showView(view) {
   state.view = view;
   $("#home-view").hidden = view !== "home";
   $("#study-view").hidden = view !== "study";
-  $("#study-actions").hidden = view !== "study";
+  $("#class-view").hidden = view !== "class";
+  $("#study-actions").hidden = view === "home";
+  $("#new-btn").hidden = view !== "study";
   $("#stop-btn").hidden = !(view === "study" && state.job?.running && state.job.set === state.current);
   updateCreate();
   window.scrollTo({ top: 0 });
 }
 $("#brand").addEventListener("click", () => showView("home"));
-$("#back-btn").addEventListener("click", () => showView("home"));
+$("#back-btn").addEventListener("click", () => {
+  const course = state.view === "study" && state.current ? courseOf(state.current) : "";
+  if (course) openClass(course); else showView("home");
+});
+$("#study-course").addEventListener("change", (e) => { if (state.current) { updateSetField(state.current, { course: e.target.value.trim() }); renderLibrary(); } });
 $("#running-open").addEventListener("click", () => { if (state.job) { state.current = state.job.set; restoreJobView(); } });
 $("#new-btn").addEventListener("click", () => {
   if (!state.job?.running) {
     state.files = []; renderFiles();
-    for (const id of ["#paste-text", "#canvas-text", "#context-text", "#focus"]) $(id).value = "";
+    for (const id of ["#paste-text", "#canvas-text", "#context-text", "#focus", "#course"]) $(id).value = "";
   }
   showCreateError("");
   showView("home");
@@ -1139,13 +1286,13 @@ function restoreJobView() {
 document.querySelector(".tabs").addEventListener("click", (e) => { const b = e.target.closest("[role=tab]"); if (b) setTab(b.dataset.kind); });
 document.querySelector(".tabs").addEventListener("keydown", (e) => {
   if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-  const i = KINDS.indexOf(state.tab) + (e.key === "ArrowRight" ? 1 : -1);
-  setTab(KINDS[(i + 3) % 3]);
+  const i = TABS.indexOf(state.tab) + (e.key === "ArrowRight" ? 1 : -1);
+  setTab(TABS[(i + TABS.length) % TABS.length]);
   $(`#tab-${state.tab}`).focus();
 });
 function setTab(kind) {
   state.tab = kind;
-  for (const k of KINDS) {
+  for (const k of TABS) {
     $(`#tab-${k}`).setAttribute("aria-selected", String(k === kind));
     $(`#tab-${k}`).tabIndex = k === kind ? 0 : -1;
     $(`#panel-${k}`).hidden = k !== kind;
@@ -1160,10 +1307,31 @@ function renderStudy() {
   sources.replaceChildren(src.length ? `From ${src.slice(0, 4).join(", ")}${src.length > 4 ? ` and ${src.length - 4} more` : ""}` : "");
   if (set.personalized) sources.append(h("span", { class: "badge" }, "Focused on what's coming up"));
   $("#study-notices").replaceChildren(...(state.notices ?? []).map((n) => h("p", { class: "notice" }, n)));
+  if (document.activeElement !== $("#study-course")) $("#study-course").value = courseOf(set);
   renderDots();
   renderDocs();
   renderQuizPanel();
+  renderNotes();
   $("#stop-btn").hidden = !(state.view === "study" && state.job?.running && state.job.set === state.current);
+}
+
+// The notes box is built once per study set, so typing is never interrupted by a re-render.
+function renderNotes() {
+  const panel = $("#panel-notes");
+  const set = state.current;
+  if (panel.dataset.setId === set.id && panel.firstChild) {
+    const area = panel.querySelector("textarea");
+    if (document.activeElement !== area && area.value !== (set.notes ?? "")) area.value = set.notes ?? "";
+    return;
+  }
+  panel.dataset.setId = set.id;
+  const status = h("span", { class: "muted small" });
+  const area = h("textarea", { id: "set-notes", placeholder: "Write what you want to remember in your own words: tricky ideas, mnemonics, questions for your teacher…" });
+  area.value = set.notes ?? "";
+  debounceSave(area, status, (v) => updateSetField(state.current, { notes: v }));
+  panel.replaceChildren(h("div", { class: "notes-wrap" },
+    h("div", { class: "notes-head" }, h("h2", {}, "My notes"), status),
+    h("label", { class: "field", for: "set-notes" }, h("span", { class: "muted" }, "Saved with this study set. If the set is in a class, these notes also appear on the class page."), area)));
 }
 
 function renderDots() {
@@ -1305,7 +1473,7 @@ async function startGeneration() {
       statuses: { lesson: "waiting", review: "waiting", quiz: "waiting" },
       errors: {}, truncated: {}, notices,
       finished: new Set(),
-      set: { id: newId(), title: "New study set", createdAt: Date.now(), sources: parts.map((p) => p.name), lesson: "", review: "", quiz: null, personalized: false },
+      set: { id: newId(), title: "New study set", createdAt: Date.now(), sources: parts.map((p) => p.name), lesson: "", review: "", quiz: null, personalized: false, notes: "", course: $("#course").value.trim() },
     };
     job.set.personalized = Boolean(job.context);
     const bytes = new TextEncoder().encode(buildInput(job, "lesson")).length;
@@ -1339,6 +1507,44 @@ function retry(kind) {
   job.running = true;
   updateCreate();
   runOne(job, kind, true).then(() => finishJob(job));
+}
+
+/** Writes a fresh quiz for the set on screen, steering away from every question already played. */
+async function newQuiz() {
+  const set = state.current;
+  const sample = await getSample();
+  if (!set?.quiz || !sample) return;
+  if (state.job?.running) { quiz.notice("Something else is still being written. Wait for it to finish, then try again."); return; }
+  const base = state.job && state.job.set.id === set.id ? state.job : null;
+  // Without the original files in memory, the lesson (or review) stands in as the material.
+  const parts = base?.parts ?? [set.lesson ? { name: "Full lesson", text: set.lesson } : null, !set.lesson && set.review ? { name: "Short review", text: set.review } : null].filter(Boolean);
+  if (!parts.length) { quiz.notice("This study set has no lesson or review to write new questions from."); return; }
+  const previous = set.quiz;
+  const asked = [...new Set([...(set.pastQuestions ?? []), ...previous.questions.map((q) => q.question)])].slice(-150);
+  const job = {
+    running: true, parts, images: base?.images ?? [],
+    level: base?.level ?? $("#level").value, focus: base?.focus ?? "", context: base?.context ?? "",
+    quizLength: previous.questions.length, avoid: asked, quizProgress: 0,
+    controllers: {}, statuses: state.statuses, errors: state.errors, truncated: state.truncated, notices: state.notices ?? [],
+    finished: new Set(KINDS.filter((k) => (k === "quiz" ? set.quiz : set[k]))),
+    set,
+  };
+  state.job = job;
+  updateCreate();
+  await runOne(job, "quiz", true);
+  if (set.quiz) {
+    set.pastQuestions = asked;
+    delete set.bestScore; // the old best belonged to the old questions
+    if (state.current === set) { quiz.reset(); renderQuizPanel(); }
+  } else {
+    // Keep the quiz they had rather than leaving them with none.
+    const why = job.errors.quiz;
+    set.quiz = previous;
+    job.statuses.quiz = "done";
+    delete job.errors.quiz;
+    if (state.current === set) { renderDots(); renderQuizPanel(); quiz.notice(`A new quiz couldn't be written. ${why}`); }
+  }
+  finishJob(job);
 }
 
 function finishJob(job) {
@@ -1434,7 +1640,7 @@ function renderQuizPanel() {
 }
 
 const quiz = (() => {
-  let panel = null, set = null, qs = [], index = 0, answers = [], streak = 0, bestStreak = 0, phase = "intro", timed = true, deadline = 0, timer = null, fullRun = true;
+  let panel = null, set = null, qs = [], index = 0, answers = [], streak = 0, bestStreak = 0, phase = "intro", fullRun = true, note = "";
 
   const shuffle = (a) => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   const prepare = (list) => list.map((q) => {
@@ -1444,7 +1650,8 @@ const quiz = (() => {
   const points = () => answers.reduce((n, a) => n + a.points, 0);
   const md = (text, inline = true, tag = "span") => { const el = h(tag); renderMarkdown(el, text, { inline }); return el; };
 
-  function reset() { clearInterval(timer); timer = null; panel = null; set = null; phase = "intro"; }
+  function reset() { panel = null; set = null; phase = "intro"; note = ""; }
+  function notice(text) { note = text; if (panel) { phase = phase === "results" ? "results" : "intro"; draw(); } }
   function mounted(p, s) { return panel === p && set === s && p.firstChild; }
   function mount(p, s) { reset(); panel = p; set = s; phase = "intro"; draw(); }
 
@@ -1454,31 +1661,17 @@ const quiz = (() => {
   }
   function ask() {
     phase = "question";
-    deadline = Date.now() + SECONDS * 1000;
-    clearInterval(timer);
-    if (timed) timer = setInterval(tick, 100);
+    note = "";
     draw();
     panel.querySelector(".quiz-stage")?.scrollIntoView({ block: "start", behavior: "smooth" });
   }
-  function tick() {
-    const left = Math.max(0, (deadline - Date.now()) / 1000);
-    const t = panel?.querySelector(".timer");
-    if (t) {
-      t.querySelector(".bar > span").style.width = `${(left / SECONDS) * 100}%`;
-      t.querySelector("b").textContent = Math.ceil(left);
-      t.classList.toggle("low", left <= 5);
-    }
-    if (left <= 0) answer(null);
-  }
   function answer(picked) {
     if (phase !== "question") return;
-    clearInterval(timer);
     const q = qs[index];
-    const correct = picked !== null && q.tiles[picked].correct;
-    const frac = timed ? Math.max(0, (deadline - Date.now()) / (SECONDS * 1000)) : 1;
+    const correct = q.tiles[picked].correct;
     streak = correct ? streak + 1 : 0;
     bestStreak = Math.max(bestStreak, streak);
-    const earned = correct ? Math.round(500 + 500 * frac) + Math.min(streak - 1, 5) * 100 : 0;
+    const earned = correct ? 1000 + Math.min(streak - 1, 5) * 100 : 0;
     answers.push({ q, picked, correct, points: earned });
     phase = "feedback";
     draw();
@@ -1494,12 +1687,8 @@ const quiz = (() => {
     if (fullRun) {
       const result = { correct: answers.filter((a) => a.correct).length, total: answers.length, points: points() };
       const best = set.bestScore;
-      if (!best || best.total !== result.total || result.points > best.points) {
-        set.bestScore = result;
-        // A set still being written is saved, score included, once it finishes.
-        const stored = state.sets.find((s) => s.id === set.id);
-        if (stored) saveSet({ ...stored, bestScore: result });
-      }
+      // A set still being written is saved, score included, once it finishes.
+      if (!best || best.total !== result.total || result.points > best.points) updateSetField(set, { bestScore: result });
     }
     panel.querySelector(".quiz-stage")?.scrollIntoView({ block: "start", behavior: "smooth" });
   }
@@ -1518,15 +1707,12 @@ const quiz = (() => {
     if (!panel) return;
     const quizData = set.quiz;
     if (phase === "intro") {
-      const timedBox = h("input", { type: "checkbox", id: "quiz-timed" });
-      timedBox.checked = timed;
-      timedBox.addEventListener("change", () => { timed = timedBox.checked; });
       panel.replaceChildren(h("div", { class: "quiz-stage" }, h("div", { class: "quiz-card quiz-intro" },
         h("p", { class: "eyebrow" }, "Practice quiz"),
         h("h2", {}, quizData.title),
-        h("p", { class: "muted" }, `${quizData.questions.length} questions. Tap an answer, no typing. After each one you'll see why the right answer is right.`),
+        h("p", { class: "muted" }, `${quizData.questions.length} questions. Tap an answer: no typing and no timer. After each one you'll see why the right answer is right.`),
         set.bestScore ? h("p", { class: "best-score" }, `Best so far: ${set.bestScore.correct}/${set.bestScore.total} · ${set.bestScore.points.toLocaleString()} pts`) : null,
-        h("label", { class: "check", for: "quiz-timed", style: "text-align: left" }, timedBox, h("span", {}, `Timed (${SECONDS} s per question, faster answers score more)`)),
+        note ? h("p", { class: "quiz-note", role: "alert" }, note) : null,
         h("button", { class: "btn btn-primary btn-large", type: "button", onclick: () => start(quizData.questions, true) }, "Start quiz"),
       )));
       return;
@@ -1549,10 +1735,13 @@ const quiz = (() => {
           h("span", {}, name), h("span", { class: "bar", "aria-hidden": "true" }, h("span", { style: `width: ${(t.c / t.n) * 100}%` })), h("span", { class: "muted tabular" }, `${t.c}/${t.n}`)))) : null,
         h("div", { class: "result-actions" },
           missed.length ? h("button", { class: "btn btn-primary", type: "button", onclick: () => start(missed.map((a) => a.q), false) }, `Retry the ${missed.length} I missed`) : null,
-          h("button", { class: missed.length ? "btn" : "btn btn-primary", type: "button", onclick: () => start(quizData.questions, true) }, "Play again")),
+          h("button", { class: missed.length ? "btn" : "btn btn-primary", type: "button", onclick: () => start(quizData.questions, true) }, "Play again"),
+          state.sample ? h("button", { class: "btn", type: "button", onclick: newQuiz }, "New quiz, different questions") : null,
+          missed.length ? h("button", { class: "btn", type: "button", onclick: (e) => { addMissedToNotes(missed); e.currentTarget.textContent = "Added to notes"; e.currentTarget.disabled = true; } }, "Add missed to my notes") : null),
+        note ? h("p", { class: "quiz-note", role: "alert" }, note) : null,
         missed.length ? h("section", {}, h("h3", {}, "Review what you missed"), missed.map((a) => h("article", { class: "missed-item" },
           md(a.q.question, true, "div"),
-          h("p", { class: "missed-line wrong" }, h("b", {}, "Your answer"), a.picked === null ? "Ran out of time" : md(a.q.tiles[a.picked].text)),
+          h("p", { class: "missed-line wrong" }, h("b", {}, "Your answer"), md(a.q.tiles[a.picked].text)),
           h("p", { class: "missed-line right" }, h("b", {}, "Correct"), md(a.q.tiles.find((t) => t.correct).text)),
           a.q.explanation ? md(a.q.explanation, false, "div") : null,
         ))) : null,
@@ -1564,15 +1753,12 @@ const quiz = (() => {
     const q = qs[index];
     const answered = phase === "feedback";
     const last = answers[answers.length - 1];
-    const left = Math.max(0, (deadline - Date.now()) / 1000);
     panel.replaceChildren(h("div", { class: "quiz-stage" },
       h("div", { class: "quiz-hud" },
         h("span", {}, `Question ${index + 1} `, h("span", { class: "muted" }, `of ${qs.length}`)),
         streak >= 2 ? h("span", { class: "streak" }, `${streak} in a row`) : null,
         h("span", { class: "score" }, `${points().toLocaleString()} pts`)),
       h("div", { class: "bar", "aria-hidden": "true" }, h("span", { style: `width: ${((index + (answered ? 1 : 0)) / qs.length) * 100}%` })),
-      timed ? h("div", { class: `timer${left <= 5 && !answered ? " low" : ""}`, role: "timer", "aria-label": "Time left" },
-        h("div", { class: "bar" }, h("span", { style: `width: ${(left / SECONDS) * 100}%` })), h("b", {}, Math.ceil(left))) : null,
       h("div", { class: "quiz-question" }, h("span", { class: "topic-chip" }, q.topic), md(q.question, true, "h2")),
       h("div", { class: "tiles" }, q.tiles.map((t, i) => {
         const cls = !answered ? "" : t.correct ? " is-correct" : last.picked === i ? " is-wrong" : " is-dim";
@@ -1583,13 +1769,20 @@ const quiz = (() => {
         return b;
       })),
       answered ? h("div", { class: `feedback ${last.correct ? "good" : "bad"}`, role: "status" },
-        h("div", { class: "feedback-head" }, h("span", {}, last.correct ? "Correct!" : last.picked === null ? "Time's up" : "Not quite"), last.correct ? h("span", {}, `+${last.points.toLocaleString()}`) : null),
+        h("div", { class: "feedback-head" }, h("span", {}, last.correct ? "Correct!" : "Not quite"), last.correct ? h("span", {}, `+${last.points.toLocaleString()}`) : null),
         q.explanation ? md(q.explanation, false, "div") : null,
         h("button", { class: "btn btn-primary", type: "button", onclick: next }, index + 1 < qs.length ? "Next question" : "See results")) : null,
     ));
   }
 
-  return { reset, mounted, mount };
+  function addMissedToNotes(missed) {
+    const lines = missed.map((a) => `Q: ${a.q.question}\nA: ${a.q.tiles.find((t) => t.correct).text}${a.q.explanation ? `\nWhy: ${a.q.explanation}` : ""}`);
+    const current = (set.notes ?? "").trimEnd();
+    updateSetField(set, { notes: `${current ? current + "\n\n" : ""}Missed on the quiz:\n\n${lines.join("\n\n")}\n` });
+    if (state.current === set) renderNotes();
+  }
+
+  return { reset, mounted, mount, notice };
 })();
 
 // ---------------------------------------------------------------------------
