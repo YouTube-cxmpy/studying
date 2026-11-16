@@ -115,6 +115,7 @@ interface RunArgs {
   parts: Part[];
   resources: ResourceKind[];
   quizLength: number;
+  avoid: string[];
   gradeLevel: string;
   focus: string;
   studentContext: string | null;
@@ -150,7 +151,7 @@ export async function runGeneration(args: RunArgs): Promise<void> {
           messages: [
             {
               role: "user",
-              content: [...shared, { type: "text", text: instructionFor(kind, args.quizLength) }],
+              content: [...shared, { type: "text", text: instructionFor(kind, args.quizLength, args.avoid) }],
             },
           ],
         },

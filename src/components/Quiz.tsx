@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Quiz as QuizData, QuizQuestion } from "@/lib/types";
 import { Markdown } from "./Markdown";
 
-const SECONDS_PER_QUESTION = 25;
 const LETTERS = ["A", "B", "C", "D"];
 
 interface PlayQuestion extends QuizQuestion {
@@ -14,8 +13,8 @@ interface PlayQuestion extends QuizQuestion {
 
 interface Answer {
   question: PlayQuestion;
-  /** Index into tiles, or null if time ran out. */
-  picked: number | null;
+  /** Index into tiles. */
+  picked: number;
   correct: boolean;
   points: number;
 }
@@ -44,21 +43,24 @@ export function Quiz({
   quiz,
   best,
   onFinish,
+  onNewQuiz,
+  onAddToNotes,
 }: {
   quiz: QuizData;
   best?: { correct: number; total: number; points: number };
   onFinish: (result: { correct: number; total: number; points: number }) => void;
+  /** Writes a completely new quiz on the same material. Absent when that isn't possible. */
+  onNewQuiz?: () => void;
+  onAddToNotes?: (text: string) => void;
 }) {
   const [phase, setPhase] = useState<Phase>("intro");
-  const [timed, setTimed] = useState(true);
+  const [addedToNotes, setAddedToNotes] = useState(false);
   const [questions, setQuestions] = useState<PlayQuestion[]>([]);
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Answer[]>([]);
   const [streak, setStreak] = useState(0);
   const [bestStreak, setBestStreak] = useState(0);
-  const [remaining, setRemaining] = useState(SECONDS_PER_QUESTION);
   const [fullRun, setFullRun] = useState(true);
-  const deadline = useRef(0);
   const nextButton = useRef<HTMLButtonElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const feedback = useRef<HTMLDivElement>(null);
@@ -75,35 +77,31 @@ export function Quiz({
       setStreak(0);
       setBestStreak(0);
       setFullRun(isFullRun);
-      setRemaining(SECONDS_PER_QUESTION);
-      deadline.current = Date.now() + SECONDS_PER_QUESTION * 1000;
+      setAddedToNotes(false);
       setPhase("question");
     },
     [],
   );
 
   const answer = useCallback(
-    (picked: number | null) => {
+    (picked: number) => {
       if (phase !== "question" || !current) return;
-      const correct = picked !== null && current.tiles[picked].correct;
-      const fraction = timed ? Math.max(0, (deadline.current - Date.now()) / (SECONDS_PER_QUESTION * 1000)) : 1;
+      const correct = current.tiles[picked].correct;
       const newStreak = correct ? streak + 1 : 0;
-      // Up to 1000 for a fast correct answer, plus a bonus for answering several in a row.
-      const earned = correct ? Math.round(500 + 500 * fraction) + Math.min(newStreak - 1, 5) * 100 : 0;
+      // 1000 for a correct answer, plus a bonus for answering several in a row.
+      const earned = correct ? 1000 + Math.min(newStreak - 1, 5) * 100 : 0;
       setStreak(newStreak);
       setBestStreak((b) => Math.max(b, newStreak));
       setAnswers((a) => [...a, { question: current, picked, correct, points: earned }]);
       setPhase("feedback");
     },
-    [phase, current, timed, streak],
+    [phase, current, streak],
   );
 
   const next = useCallback(() => {
     if (phase !== "feedback") return;
     if (index + 1 < questions.length) {
       setIndex(index + 1);
-      setRemaining(SECONDS_PER_QUESTION);
-      deadline.current = Date.now() + SECONDS_PER_QUESTION * 1000;
       setPhase("question");
     } else {
       setPhase("results");
@@ -112,17 +110,6 @@ export function Quiz({
       }
     }
   }, [phase, index, questions.length, fullRun, onFinish, answers, points]);
-
-  // Countdown
-  useEffect(() => {
-    if (phase !== "question" || !timed) return;
-    const timer = setInterval(() => {
-      const left = (deadline.current - Date.now()) / 1000;
-      setRemaining(Math.max(0, left));
-      if (left <= 0) answer(null);
-    }, 100);
-    return () => clearInterval(timer);
-  }, [phase, timed, answer]);
 
   // Keyboard: 1–4 or A–D to answer, Enter for next.
   useEffect(() => {
@@ -169,20 +156,14 @@ export function Quiz({
         <p className="eyebrow">Practice quiz</p>
         <h2>{quiz.title}</h2>
         <p className="muted">
-          {quiz.questions.length} questions. Tap an answer — no typing. You&apos;ll see why each answer is right as
-          you go.
+          {quiz.questions.length} questions. Tap an answer — no typing, no timer. You&apos;ll see why each answer is
+          right as you go.
         </p>
         {best && (
           <p className="best-score">
             Best so far: {best.correct}/{best.total} · {best.points.toLocaleString()} pts
           </p>
         )}
-        <label className="switch">
-          <input type="checkbox" checked={timed} onChange={(e) => setTimed(e.target.checked)} />
-          <span>
-            Timed ({SECONDS_PER_QUESTION}s per question, faster answers score more)
-          </span>
-        </label>
         <button className="btn btn-primary btn-large" onClick={() => start(quiz.questions, true)}>
           Start quiz
         </button>
@@ -242,6 +223,30 @@ export function Quiz({
           <button className={missed.length ? "btn" : "btn btn-primary"} onClick={() => start(quiz.questions, true)}>
             Play again
           </button>
+          {onNewQuiz && (
+            <button className="btn" onClick={onNewQuiz}>
+              New quiz, different questions
+            </button>
+          )}
+          {onAddToNotes && missed.length > 0 && (
+            <button
+              className="btn"
+              disabled={addedToNotes}
+              onClick={() => {
+                onAddToNotes(
+                  `Missed on the quiz:\n\n${missed
+                    .map((a) => {
+                      const right = a.question.tiles.find((t) => t.correct)!.text;
+                      return `Q: ${a.question.question}\nA: ${right}${a.question.explanation ? `\nWhy: ${a.question.explanation}` : ""}`;
+                    })
+                    .join("\n\n")}`,
+                );
+                setAddedToNotes(true);
+              }}
+            >
+              {addedToNotes ? "Added to notes" : "Add missed to my notes"}
+            </button>
+          )}
         </div>
 
         {missed.length > 0 && (
@@ -252,16 +257,10 @@ export function Quiz({
                 <div className="missed-q">
                   <Markdown text={a.question.question} inline />
                 </div>
-                {a.picked !== null ? (
-                  <p className="missed-line wrong">
-                    <span>Your answer</span>
-                    <Markdown text={a.question.tiles[a.picked].text} inline />
-                  </p>
-                ) : (
-                  <p className="missed-line wrong">
-                    <span>Your answer</span>Ran out of time
-                  </p>
-                )}
+                <p className="missed-line wrong">
+                  <span>Your answer</span>
+                  <Markdown text={a.question.tiles[a.picked].text} inline />
+                </p>
                 <p className="missed-line right">
                   <span>Correct</span>
                   <Markdown text={a.question.tiles.find((t) => t.correct)!.text} inline />
@@ -292,17 +291,6 @@ export function Quiz({
       <div className="quiz-progress" aria-hidden="true">
         <span style={{ width: `${((index + (answered ? 1 : 0)) / questions.length) * 100}%` }} />
       </div>
-
-      {timed && (
-        <div
-          className={`quiz-timer${remaining <= 5 && !answered ? " low" : ""}`}
-          role="timer"
-          aria-label={`${Math.ceil(remaining)} seconds left`}
-        >
-          <span style={{ width: `${(remaining / SECONDS_PER_QUESTION) * 100}%` }} />
-          <b>{Math.ceil(remaining)}</b>
-        </div>
-      )}
 
       <div className="quiz-question">
         <span className="topic-chip">{current.topic}</span>
@@ -342,7 +330,7 @@ export function Quiz({
       {answered && last && (
         <div ref={feedback} className={`feedback ${last.correct ? "good" : "bad"}`} role="status">
           <div className="feedback-head">
-            <strong>{last.correct ? "Correct!" : last.picked === null ? "Time's up" : "Not quite"}</strong>
+            <strong>{last.correct ? "Correct!" : "Not quite"}</strong>
             {last.correct && <span>+{last.points.toLocaleString()}</span>}
           </div>
           {current.explanation && (

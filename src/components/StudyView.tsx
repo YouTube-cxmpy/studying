@@ -1,18 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { downloadText, slugify } from "@/lib/client";
 import type { MaterialSummary, ResourceKind, StudySet } from "@/lib/types";
 import { Markdown, headingsOf } from "./Markdown";
 import { Quiz } from "./Quiz";
 
+export type Tab = ResourceKind | "notes";
 export type Status = "idle" | "waiting" | "streaming" | "done" | "error";
 export type ResourceStates = Record<ResourceKind, { status: Status; error?: string; truncated?: boolean }>;
 
-const TABS: { kind: ResourceKind; label: string; short: string; blurb: string }[] = [
+const TABS: { kind: Tab; label: string; short: string; blurb: string }[] = [
   { kind: "lesson", label: "Full lesson", short: "Lesson", blurb: "Everything, explained" },
   { kind: "review", label: "Short review", short: "Review", blurb: "The essentials" },
   { kind: "quiz", label: "Practice quiz", short: "Quiz", blurb: "Test yourself" },
+  { kind: "notes", label: "My notes", short: "Notes", blurb: "In your own words" },
 ];
 
 function StatusDot({ status }: { status: Status }) {
@@ -119,6 +121,67 @@ function Document({
   );
 }
 
+/** The notes box keeps its own text while typing and saves a moment after the last keystroke. */
+function Notes({ set, onChange }: { set: StudySet; onChange: (notes: string) => void }) {
+  const [value, setValue] = useState(set.notes ?? "");
+  const [status, setStatus] = useState("");
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latest = useRef(value);
+  const focused = useRef(false);
+  const save = useRef(onChange);
+  save.current = onChange;
+
+  // Notes added from outside (e.g. missed quiz questions) appear unless the student is mid-edit.
+  useEffect(() => {
+    if (!focused.current && (set.notes ?? "") !== latest.current) {
+      latest.current = set.notes ?? "";
+      setValue(latest.current);
+    }
+  }, [set.notes]);
+
+  const flush = () => {
+    if (timer.current === null) return;
+    clearTimeout(timer.current);
+    timer.current = null;
+    save.current(latest.current);
+    setStatus("Saved");
+  };
+  useEffect(() => () => flush(), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="notes-wrap">
+      <div className="notes-head">
+        <h2>My notes</h2>
+        <span className="muted small" aria-live="polite">
+          {status}
+        </span>
+      </div>
+      <label className="field" htmlFor="set-notes">
+        <span className="muted">
+          Saved with this study set. If the set is in a class, these notes also show on the class page.
+        </span>
+        <textarea
+          id="set-notes"
+          value={value}
+          placeholder="Write what you want to remember in your own words: tricky ideas, mnemonics, questions for your teacher…"
+          onFocus={() => (focused.current = true)}
+          onBlur={() => {
+            focused.current = false;
+            flush();
+          }}
+          onChange={(e) => {
+            latest.current = e.target.value;
+            setValue(e.target.value);
+            setStatus("Saving…");
+            if (timer.current) clearTimeout(timer.current);
+            timer.current = setTimeout(flush, 700);
+          }}
+        />
+      </label>
+    </div>
+  );
+}
+
 export function StudyView({
   set,
   states,
@@ -131,6 +194,11 @@ export function StudyView({
   setTab,
   onRetry,
   onQuizFinish,
+  onNewQuiz,
+  onAddToNotes,
+  onNotes,
+  onCourse,
+  courses,
 }: {
   set: StudySet;
   states: ResourceStates;
@@ -139,10 +207,15 @@ export function StudyView({
   materials: MaterialSummary[];
   warnings: string[];
   personalized: boolean;
-  tab: ResourceKind;
-  setTab: (tab: ResourceKind) => void;
+  tab: Tab;
+  setTab: (tab: Tab) => void;
   onRetry?: (kind: ResourceKind) => void;
   onQuizFinish: (result: { correct: number; total: number; points: number }) => void;
+  onNewQuiz?: () => void;
+  onAddToNotes: (text: string) => void;
+  onNotes: (notes: string) => void;
+  onCourse: (course: string) => void;
+  courses: string[];
 }) {
   const retry = (kind: ResourceKind) => (onRetry ? () => onRetry(kind) : undefined);
 
@@ -154,6 +227,23 @@ export function StudyView({
           {set.sources.length > 0 && <>From {set.sources.slice(0, 4).join(", ")}{set.sources.length > 4 ? ` and ${set.sources.length - 4} more` : ""}</>}
           {personalized && <span className="badge">Personalized from Canvas</span>}
         </p>
+        <label className="class-pick">
+          Class
+          <input
+            type="text"
+            list="course-names"
+            maxLength={60}
+            placeholder="Add to a class"
+            defaultValue={set.course ?? ""}
+            key={set.id}
+            onBlur={(e) => e.target.value.trim() !== (set.course ?? "") && onCourse(e.target.value.trim())}
+          />
+          <datalist id="course-names">
+            {courses.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+        </label>
         {materials.some((m) => m.as === "text" && /\.(pptx|docx)$/i.test(m.name)) && (
           <p className="muted small">
             Slides and Word files are read as text only. If diagrams or images matter, export to PDF and add that
@@ -180,7 +270,7 @@ export function StudyView({
             <span className="tab-label">
               <span className="tab-long">{t.label}</span>
               <span className="tab-short">{t.short}</span>
-              <StatusDot status={states[t.kind].status} />
+              {t.kind !== "notes" && <StatusDot status={states[t.kind].status} />}
             </span>
             <span className="tab-blurb">{t.blurb}</span>
           </button>
@@ -196,7 +286,14 @@ export function StudyView({
         )}
         {tab === "quiz" &&
           (set.quiz ? (
-            <Quiz key={set.id} quiz={set.quiz} best={set.bestScore} onFinish={onQuizFinish} />
+            <Quiz
+              key={`${set.id}:${set.pastQuestions?.length ?? 0}`}
+              quiz={set.quiz}
+              best={set.bestScore}
+              onFinish={onQuizFinish}
+              onNewQuiz={onNewQuiz}
+              onAddToNotes={onAddToNotes}
+            />
           ) : states.quiz.status === "error" ? (
             <Failed message={states.quiz.error ?? "The quiz couldn't be generated."} onRetry={retry("quiz")} />
           ) : states.quiz.status === "idle" ? (
@@ -210,6 +307,7 @@ export function StudyView({
               }
             />
           ))}
+        {tab === "notes" && <Notes key={set.id} set={set} onChange={onNotes} />}
       </div>
     </div>
   );

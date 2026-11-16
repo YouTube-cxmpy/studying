@@ -78,6 +78,27 @@ export function saveLibrary(sets: StudySet[]): boolean {
   return false;
 }
 
+const CLASS_NOTES_KEY = "studykit.classnotes.v1";
+
+/** Notes written for a whole class, keyed by lower-cased class name. */
+export function loadClassNotes(): Record<string, string> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CLASS_NOTES_KEY) ?? "{}") as Record<string, string>;
+    return raw && typeof raw === "object" ? raw : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveClassNotes(notes: Record<string, string>): boolean {
+  try {
+    localStorage.setItem(CLASS_NOTES_KEY, JSON.stringify(notes));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function newId(): string {
   return typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()

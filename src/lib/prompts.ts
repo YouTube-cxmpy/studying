@@ -70,7 +70,10 @@ Structure:
 
 Write the review directly — no preamble before the title and no closing remarks.`;
 
-function quizPrompt(count: number): string {
+function quizPrompt(count: number, avoid: string[] = []): string {
+  const fresh = avoid.length
+    ? `\n\nThe student has already played the questions listed below, so this must be a completely NEW quiz. Do not reuse or reword any of them. Test facts and ideas they did not cover; where an important idea has to come up again, come at it from a different angle with a new scenario, new numbers or a new example.\n\n<already_asked>\n${avoid.map((q) => `- ${q.replace(/\s+/g, " ").slice(0, 300)}`).join("\n")}\n</already_asked>`
+    : "";
   return `Write the PRACTICE QUIZ for this material: ${count} multiple-choice questions that the student will play in a fast, game-style quiz where they tap one of the answer tiles.
 
 What makes a question good here:
@@ -85,13 +88,13 @@ What makes a question good here:
 - "correctIndex" is the zero-based position of the correct option.
 - You can use inline LaTeX ($...$) in questions, options and explanations when math calls for it.
 
-Check each answer before you finish: for anything calculated, redo the calculation; for anything factual, confirm it against the material. "title" is a short name for the quiz topic.`;
+Check each answer before you finish: for anything calculated, redo the calculation; for anything factual, confirm it against the material. "title" is a short name for the quiz topic.${fresh}`;
 }
 
-export function instructionFor(kind: ResourceKind, quizLength: number): string {
+export function instructionFor(kind: ResourceKind, quizLength: number, avoid: string[] = []): string {
   if (kind === "lesson") return LESSON;
   if (kind === "review") return REVIEW;
-  return quizPrompt(quizLength);
+  return quizPrompt(quizLength, avoid);
 }
 
 export const QUIZ_SCHEMA = {

@@ -1,16 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CanvasSelection } from "@/components/CanvasPanel";
+import { ClassView } from "@/components/ClassView";
 import { Create, type CreateOptions } from "@/components/Create";
 import { titleOf } from "@/components/Markdown";
-import { type ResourceStates, StudyView } from "@/components/StudyView";
-import { RequestError, api, loadLibrary, newId, saveLibrary, streamGenerate } from "@/lib/client";
+import { type ResourceStates, StudyView, type Tab } from "@/components/StudyView";
+import { RequestError, api, loadClassNotes, loadLibrary, newId, saveClassNotes, saveLibrary, streamGenerate } from "@/lib/client";
 import type { GenerateOptions, MaterialSummary, ResourceKind, SessionInfo, StudySet } from "@/lib/types";
 
 const ALL: ResourceKind[] = ["lesson", "review", "quiz"];
 const OPTIONS_KEY = "studykit.options.v1";
-const DEFAULT_OPTIONS: CreateOptions = { gradeLevel: "High school", quizLength: 15, focus: "" };
+const DEFAULT_OPTIONS: CreateOptions = { gradeLevel: "High school", quizLength: 15, focus: "", course: "" };
 
 function idleStates(set?: StudySet): ResourceStates {
   return {
@@ -60,7 +61,9 @@ export default function Home() {
 
   const [current, setCurrent] = useState<StudySet | null>(null);
   const [states, setStates] = useState<ResourceStates>(idleStates());
-  const [tab, setTab] = useState<ResourceKind>("lesson");
+  const [tab, setTab] = useState<Tab>("lesson");
+  const [classOpen, setClassOpen] = useState<string | null>(null);
+  const [classNotes, setClassNotes] = useState<Record<string, string>>({});
   const [quizProgress, setQuizProgress] = useState(0);
   const [materials, setMaterials] = useState<MaterialSummary[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -82,6 +85,7 @@ export default function Home() {
     refreshSession();
     libraryRef.current = loadLibrary();
     setLibrary(libraryRef.current);
+    setClassNotes(loadClassNotes());
     try {
       const saved = JSON.parse(localStorage.getItem(OPTIONS_KEY) ?? "null") as Partial<CreateOptions> | null;
       if (saved) setOptionsState((o) => ({ ...o, gradeLevel: saved.gradeLevel ?? o.gradeLevel, quizLength: saved.quizLength ?? o.quizLength }));
@@ -121,8 +125,36 @@ export default function Home() {
     [updateLibrary],
   );
 
+  const draftRef = useRef<StudySet | null>(null);
+
+  /** Changes fields on the study set on screen, the one being written, and its saved copy. */
+  const patchSet = useCallback(
+    (patch: Partial<StudySet>) => {
+      const live = currentRef.current;
+      if (!live) return;
+      if (draftRef.current?.id === live.id) Object.assign(draftRef.current, patch);
+      const updated = { ...live, ...patch };
+      currentRef.current = updated;
+      setCurrent(updated);
+      const stored = libraryRef.current.find((s) => s.id === live.id);
+      if (stored) persist({ ...stored, ...patch });
+    },
+    [persist],
+  );
+
+  const courses = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const s of library) if (s.course?.trim()) names.set(s.course.trim().toLowerCase(), s.course.trim());
+    return [...names.values()].sort((a, b) => a.localeCompare(b));
+  }, [library]);
+
   const generate = useCallback(
-    async (resources: ResourceKind[], base: StudySet | null) => {
+    async (
+      resources: ResourceKind[],
+      base: StudySet | null,
+      // A fresh quiz on a saved set: write from this text and steer away from these questions.
+      extra?: { text: string; avoid: string[]; quizLength: number },
+    ) => {
       detach();
       const controller = new AbortController();
       abort.current = controller;
@@ -130,20 +162,37 @@ export default function Home() {
 
       const request: GenerateOptions = {
         resources,
-        quizLength: options.quizLength,
+        quizLength: extra?.quizLength ?? options.quizLength,
         gradeLevel: options.gradeLevel,
-        focus: options.focus,
-        canvas: canvas ? { courseId: canvas.courseId, refs: canvas.refs, personalize: canvas.personalize } : undefined,
+        focus: extra ? "" : options.focus,
+        avoid: extra?.avoid,
+        canvas: !extra && canvas ? { courseId: canvas.courseId, refs: canvas.refs, personalize: canvas.personalize } : undefined,
       };
       const form = new FormData();
       form.set("options", JSON.stringify(request));
-      if (text.trim()) form.set("text", text);
-      for (const file of files) form.append("files", file);
+      if (extra) {
+        form.set("text", extra.text);
+      } else {
+        if (text.trim()) form.set("text", text);
+        for (const file of files) form.append("files", file);
+      }
 
       // Text arrives in many small pieces; collect it here and paint a few times a second.
       const draft: StudySet = base
         ? { ...base }
-        : { id: newId(), title: "New study set", createdAt: Date.now(), sources: [], lesson: "", review: "", quiz: null };
+        : {
+            id: newId(),
+            title: "New study set",
+            createdAt: Date.now(),
+            sources: [],
+            lesson: "",
+            review: "",
+            quiz: null,
+            notes: "",
+            course: options.course.trim() || canvas?.courseName || "",
+          };
+      draftRef.current = draft;
+      const previousQuiz = base?.quiz ?? null;
       for (const kind of resources) {
         if (kind === "quiz") draft.quiz = null;
         else draft[kind] = "";
@@ -206,8 +255,14 @@ export default function Home() {
               setQuizProgress(event.count);
               break;
             case "done":
-              if (event.resource === "quiz") draft.quiz = event.quiz ?? null;
-              else if (event.text) draft[event.resource] = event.text;
+              if (event.resource === "quiz") {
+                draft.quiz = event.quiz ?? null;
+                if (extra) {
+                  // The old best score belonged to the old questions.
+                  draft.pastQuestions = extra.avoid;
+                  delete draft.bestScore;
+                }
+              } else if (event.text) draft[event.resource] = event.text;
               refreshTitle();
               dirty = true;
               finished.add(event.resource);
@@ -232,8 +287,9 @@ export default function Home() {
         }
       } finally {
         clearInterval(painter);
+        const owned = abort.current === controller;
         // If the user moved on to something else, leave the screen alone.
-        if (abort.current === controller) {
+        if (owned) {
           abort.current = null;
           setGenerating(false);
           if (started) {
@@ -252,6 +308,13 @@ export default function Home() {
               return next;
             });
           }
+        }
+        if (owned && extra && started && !finished.has("quiz")) {
+          // Keep the quiz they had rather than leaving them with none.
+          draft.quiz = previousQuiz;
+          setCurrent({ ...draft });
+          setStates((prev) => ({ ...prev, quiz: { status: previousQuiz ? "done" : "idle" } }));
+          if (!controller.signal.aborted) setNotice("A new quiz couldn't be written, so your current quiz is still here. Try again in a moment.");
         }
         // Save only what completed; half-written resources aren't kept.
         if (finished.size > 0) {
@@ -275,11 +338,12 @@ export default function Home() {
     setGenerating(false);
   };
 
-  const openSet = (set: StudySet) => {
+  const openSet = (set: StudySet, startTab?: Tab) => {
     detach();
+    setClassOpen(null);
     setCurrent(set);
     setStates(idleStates(set));
-    setTab(set.lesson ? "lesson" : set.review ? "review" : "quiz");
+    setTab(startTab ?? (set.lesson ? "lesson" : set.review ? "review" : "quiz"));
     setMaterials([]);
     setWarnings([]);
     setPersonalized(false);
@@ -287,34 +351,97 @@ export default function Home() {
     window.scrollTo({ top: 0 });
   };
 
+  const leave = () => !generating || window.confirm("Your study set is still being written. Leave anyway?");
+
   const goHome = () => {
-    if (generating && !window.confirm("Your study set is still being written. Leave anyway?")) return;
+    if (!leave()) return;
     detach();
     setCurrent(null);
+    setClassOpen(null);
     setError(null);
+  };
+
+  const openClass = (name: string) => {
+    if (!leave()) return;
+    detach();
+    setCurrent(null);
+    setClassOpen(name);
+    window.scrollTo({ top: 0 });
+  };
+
+  /** Back from a study set goes to its class, if it has one. */
+  const goBack = () => {
+    const course = current?.course?.trim();
+    if (current && course) openClass(course);
+    else goHome();
   };
 
   const startOver = () => {
     goHome();
     setFiles([]);
     setText("");
-    setOptionsState((o) => ({ ...o, focus: "" }));
+    setOptionsState((o) => ({ ...o, focus: "", course: "" }));
   };
 
   const removeSet = (id: string) => updateLibrary(libraryRef.current.filter((s) => s.id !== id));
 
   const onQuizFinish = useCallback(
     (result: { correct: number; total: number; points: number }) => {
-      const set = currentRef.current;
-      if (!set) return;
-      const best = set.bestScore;
+      const best = currentRef.current?.bestScore;
       if (best && best.total === result.total && best.points >= result.points) return;
-      const updated = { ...set, bestScore: result };
-      setCurrent(updated);
-      persist(updated);
+      patchSet({ bestScore: result });
     },
-    [persist],
+    [patchSet],
   );
+
+  const onAddToNotes = useCallback(
+    (added: string) => {
+      const existing = currentRef.current?.notes?.trimEnd();
+      patchSet({ notes: `${existing ? `${existing}\n\n` : ""}${added}\n` });
+    },
+    [patchSet],
+  );
+
+  const newQuiz = () => {
+    const set = currentRef.current;
+    if (!set?.quiz || generating) return;
+    // The original files aren't kept, so the lesson (or review) stands in as the material.
+    const material = set.lesson || set.review;
+    if (!material) {
+      setNotice("This study set has no lesson or review to write new questions from.");
+      return;
+    }
+    const avoid = [...new Set([...(set.pastQuestions ?? []), ...set.quiz.questions.map((q) => q.question)])].slice(-150);
+    void generate(["quiz"], set, { text: material, avoid, quizLength: set.quiz.questions.length });
+  };
+
+  const setClassNote = (name: string, value: string) => {
+    const next = { ...classNotes, [name.toLowerCase()]: value };
+    setClassNotes(next);
+    if (!saveClassNotes(next)) setNotice("This browser's storage is full, so class notes weren't saved.");
+  };
+
+  const libraryRow = (set: StudySet) => (
+    <li key={set.id}>
+      <button className="library-item" onClick={() => openSet(set)}>
+        <strong>{set.title}</strong>
+        <span className="muted">
+          {new Date(set.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+          {set.quiz ? ` · ${set.quiz.questions.length} questions` : ""}
+          {set.bestScore ? ` · best ${set.bestScore.correct}/${set.bestScore.total}` : ""}
+          {set.notes?.trim() ? " · notes" : ""}
+        </span>
+      </button>
+      <button
+        className="icon-btn"
+        aria-label={`Delete ${set.title}`}
+        onClick={() => window.confirm(`Delete "${set.title}"?`) && removeSet(set.id)}
+      >
+        ×
+      </button>
+    </li>
+  );
+  const unfiled = library.filter((s) => !s.course?.trim());
 
   return (
     <>
@@ -325,14 +452,14 @@ export default function Home() {
           </span>
           StudyKit
         </button>
-        {current && (
+        {(current || classOpen) && (
           <div className="topbar-actions">
             {generating && (
               <button className="btn btn-small" onClick={() => abort.current?.abort()}>
                 Stop
               </button>
             )}
-            <button className="btn btn-small" onClick={goHome}>
+            <button className="btn btn-small" onClick={goBack}>
               Back
             </button>
             <button className="btn btn-small btn-primary" onClick={startOver}>
@@ -342,7 +469,7 @@ export default function Home() {
         )}
       </header>
 
-      <main className={current ? "page page-study" : "page"}>
+      <main className={current || classOpen ? "page page-study" : "page"}>
         {notice && (
           <p className="notice dismissible">
             {notice}
@@ -369,6 +496,23 @@ export default function Home() {
             setTab={setTab}
             onRetry={canRetry && !generating ? (kind) => void generate([kind], current) : undefined}
             onQuizFinish={onQuizFinish}
+            onNewQuiz={generating ? undefined : newQuiz}
+            onAddToNotes={onAddToNotes}
+            onNotes={(notes) => patchSet({ notes })}
+            onCourse={(course) => patchSet({ course })}
+            courses={courses}
+          />
+        ) : classOpen ? (
+          <ClassView
+            name={classOpen}
+            sets={library.filter((s) => s.course?.trim().toLowerCase() === classOpen.toLowerCase())}
+            notes={classNotes[classOpen.toLowerCase()] ?? ""}
+            onNotes={(value) => setClassNote(classOpen, value)}
+            onOpenSet={openSet}
+            onNew={() => {
+              setOptionsState((o) => ({ ...o, course: classOpen }));
+              setClassOpen(null);
+            }}
           />
         ) : (
           <div className="home">
@@ -393,6 +537,7 @@ export default function Home() {
                 setCanvas={setCanvas}
                 onGenerate={() => void generate(ALL, null)}
                 error={error}
+                courses={courses}
               />
               {generating && (
                 <div className="overlay" role="status">
@@ -410,28 +555,26 @@ export default function Home() {
             <aside className="library">
               <h2>Your study sets</h2>
               {library.length === 0 ? (
-                <p className="muted">Study sets you create are saved in this browser and show up here.</p>
+                <p className="muted">Study sets you create are saved in this browser, grouped by class.</p>
               ) : (
                 <ul>
-                  {library.map((set) => (
-                    <li key={set.id}>
-                      <button className="library-item" onClick={() => openSet(set)}>
-                        <strong>{set.title}</strong>
-                        <span className="muted">
-                          {new Date(set.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                          {set.quiz ? ` · ${set.quiz.questions.length} questions` : ""}
-                          {set.bestScore ? ` · best ${set.bestScore.correct}/${set.bestScore.total}` : ""}
-                        </span>
-                      </button>
-                      <button
-                        className="icon-btn"
-                        aria-label={`Delete ${set.title}`}
-                        onClick={() => window.confirm(`Delete "${set.title}"?`) && removeSet(set.id)}
-                      >
-                        ×
-                      </button>
-                    </li>
+                  {courses.map((name) => (
+                    <Fragment key={name}>
+                      <li className="lib-heading">
+                        <button className="lib-class" onClick={() => openClass(name)}>
+                          {name}
+                          <span>Open class</span>
+                        </button>
+                      </li>
+                      {library.filter((s) => s.course?.trim().toLowerCase() === name.toLowerCase()).map(libraryRow)}
+                    </Fragment>
                   ))}
+                  {unfiled.length > 0 && courses.length > 0 && (
+                    <li className="lib-heading">
+                      <span className="lib-class">No class yet</span>
+                    </li>
+                  )}
+                  {unfiled.map(libraryRow)}
                 </ul>
               )}
             </aside>

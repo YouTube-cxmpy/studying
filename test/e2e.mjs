@@ -175,7 +175,8 @@ try {
   // --- Quiz ------------------------------------------------------------------------------------
   await page.getByRole("tab", { name: /Practice quiz/ }).click();
   await page.getByText("10 questions.").waitFor();
-  await page.getByText(/Timed \(/).click(); // untimed, so the run is deterministic
+  assert.equal(await page.locator(".timer, [role=timer]").count(), 0, "there is no timer");
+  assert.equal(await page.getByText(/Timed/).count(), 0, "no timed option");
   await page.getByRole("button", { name: "Start quiz" }).click();
   for (let i = 0; i < 10; i++) {
     await page.getByText(`Question ${i + 1}`, { exact: false }).first().waitFor();
@@ -204,6 +205,49 @@ try {
   await page.getByText("Connected as").waitFor({ state: "detached" });
   step("study set and best score are saved in the browser");
 
+  // --- New quiz, notes and classes ------------------------------------------------------------------
+  await page.getByRole("tab", { name: /Practice quiz/ }).click();
+  await page.getByRole("button", { name: "Start quiz" }).click();
+  for (let i = 0; i < 10; i++) {
+    await page.getByText(`Question ${i + 1}`, { exact: false }).first().waitFor();
+    const trueFalse = (await page.locator(".tile").count()) === 2;
+    const pick = i === 0 ? /: Exocytosis$/ : trueFalse ? /: False$/ : /: Osmosis$/;
+    await page.getByRole("button", { name: pick }).click();
+    await page.keyboard.press("Enter");
+  }
+  await page.getByText("9/10", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Add missed to my notes" }).click();
+  await page.getByRole("button", { name: "Added to notes" }).waitFor();
+  requests.length = 0;
+  await page.getByRole("button", { name: "New quiz, different questions" }).click();
+  await page.getByRole("button", { name: "Start quiz" }).waitFor({ timeout: 60_000 });
+  assert.equal(requests.length, 1, "a new quiz is a single request");
+  assert.equal(requests[0].kind, "quiz");
+  const nq = JSON.stringify(requests[0].body.messages[0].content);
+  assert.ok(nq.includes("<already_asked>") && nq.includes("Question 1: which process moves water"), "earlier questions are passed to avoid");
+  assert.ok(nq.includes("phospholipid bilayer"), "the lesson is the material for the new quiz");
+  assert.equal(await page.getByText("Best so far").count(), 0, "best score resets with the new quiz");
+  await page.getByRole("tab", { name: "My notes" }).click();
+  const noteBox = page.locator("#set-notes");
+  assert.match(await noteBox.inputValue(), /Missed on the quiz:\n\nQ: Question 1: which process moves water/);
+  await noteBox.fill((await noteBox.inputValue()) + "\nMy own note: ask about RuBisCO");
+  await noteBox.blur();
+  await page.getByText("Saved", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Back" }).click();
+  await page.getByRole("heading", { level: 1, name: "Biology 1 — Period 3" }).waitFor();
+  await page.getByText("My own note: ask about RuBisCO").waitFor();
+  await page.locator("#class-notes").fill("Unit test is Thursday.");
+  await page.locator("#class-notes").blur();
+  await page.getByText("Saved", { exact: true }).waitFor();
+  if (shots) await page.screenshot({ path: path.join(out, "07b-class.png") });
+  await page.reload();
+  await page.getByRole("button", { name: /Biology 1 — Period 3.*Open class/ }).click();
+  assert.equal(await page.locator("#class-notes").inputValue(), "Unit test is Thursday.");
+  await page.getByText("My own note: ask about RuBisCO").waitFor();
+  await page.getByRole("button", { name: /Cell Membranes and Transport/ }).first().click();
+  await page.getByRole("heading", { name: "Membrane structure" }).waitFor();
+  step("new quiz avoids earlier questions; notes and class notes are saved; sets group by Canvas course");
+
   // --- A failed resource can be retried on its own ---------------------------------------------------
   await page.getByRole("button", { name: "New study set" }).click();
   await page.getByRole("button", { name: "Paste notes" }).click();
@@ -227,7 +271,7 @@ try {
   step("a failed quiz shows an error and retries alone, keeping the lesson");
 
   // --- Disconnect ---------------------------------------------------------------------------------------
-  await page.getByRole("button", { name: "Back" }).click();
+  await page.getByRole("button", { name: "StudyKit home" }).click();
   // The Canvas panel opens by itself when an account is connected.
   await page.getByRole("button", { name: "Disconnect" }).click();
   await page.getByRole("button", { name: /Sign in with Canvas/ }).waitFor();

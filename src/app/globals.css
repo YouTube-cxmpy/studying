@@ -1656,3 +1656,132 @@ textarea {
     break-inside: avoid;
   }
 }
+
+/* ---- Notes and classes ---------------------------------------------------- */
+
+.notes-wrap {
+  display: grid;
+  gap: 10px;
+  max-width: 76ch;
+  margin: 0 auto;
+}
+
+.notes-wrap textarea {
+  min-height: 320px;
+  font-size: 1.02rem;
+  line-height: 1.6;
+}
+
+.notes-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.notes-head h2 {
+  font: 600 1.3rem/1.2 var(--serif);
+}
+
+.class-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 340px;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.class-pick input {
+  min-height: 36px;
+}
+
+.class-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.class-col {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.class-notes-box {
+  min-height: 180px;
+}
+
+.set-row {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  text-align: left;
+}
+
+.set-row strong {
+  font: 600 1.05rem/1.25 var(--serif);
+}
+
+.set-row span {
+  color: var(--ink-2);
+  font-size: 0.88rem;
+}
+
+.note-card {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-left: 4px solid var(--accent);
+  border-radius: 0 10px 10px 0;
+  background: var(--surface);
+}
+
+.note-card pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+}
+
+.lib-class {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 2px;
+  border: 0;
+  background: none;
+  font: 600 1rem/1.2 var(--serif);
+  text-align: left;
+}
+
+.lib-class span {
+  color: var(--accent);
+  font: 400 0.82rem var(--sans);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.library li.lib-heading {
+  border: 0;
+  background: none;
+  margin-top: 6px;
+}
+
+.tabs {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+@media (max-width: 900px) {
+  .class-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

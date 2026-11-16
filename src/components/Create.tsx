@@ -9,6 +9,8 @@ export interface CreateOptions {
   gradeLevel: string;
   quizLength: number;
   focus: string;
+  /** Class this set is filed under. Blank falls back to the chosen Canvas course. */
+  course: string;
 }
 
 const GRADE_LEVELS = [
@@ -38,6 +40,7 @@ export function Create({
   setCanvas,
   onGenerate,
   error,
+  courses,
 }: {
   files: File[];
   setFiles: (update: (prev: File[]) => File[]) => void;
@@ -51,6 +54,7 @@ export function Create({
   setCanvas: (selection: CanvasSelection | null) => void;
   onGenerate: () => void;
   error: string | null;
+  courses: string[];
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -200,6 +204,24 @@ export function Create({
             </div>
           </div>
         </div>
+        <label className="field">
+          <span>
+            Class <span className="muted">(optional{canvas ? `, defaults to ${canvas.courseName}` : ""})</span>
+          </span>
+          <input
+            type="text"
+            list="course-names"
+            maxLength={60}
+            placeholder="e.g. Biology"
+            value={options.course}
+            onChange={(e) => setOptions({ ...options, course: e.target.value })}
+          />
+          <datalist id="course-names">
+            {courses.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+        </label>
         <label className="field">
           <span>
             Anything to focus on? <span className="muted">(optional)</span>

@@ -34,6 +34,9 @@ function parseOptions(raw: FormDataEntryValue | null): GenerateOptions | null {
       quizLength: Math.min(40, Math.max(5, Math.round(Number(o.quizLength) || 15))),
       gradeLevel: String(o.gradeLevel ?? "").slice(0, 60),
       focus: String(o.focus ?? "").slice(0, 600),
+      avoid: Array.isArray(o.avoid)
+        ? o.avoid.filter((q): q is string => typeof q === "string").map((q) => q.slice(0, 300)).slice(-150)
+        : [],
       canvas,
     };
   } catch {
@@ -154,6 +157,7 @@ export async function POST(request: Request): Promise<Response> {
           parts,
           resources: options.resources,
           quizLength: options.quizLength,
+          avoid: options.avoid ?? [],
           gradeLevel: options.gradeLevel,
           focus: options.focus,
           studentContext,

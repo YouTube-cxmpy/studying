@@ -39,6 +39,8 @@ export interface GenerateOptions {
   quizLength: number;
   gradeLevel: string;
   focus: string;
+  /** Questions from earlier quizzes on this material; a new quiz must not repeat them. */
+  avoid?: string[];
   canvas?: {
     courseId: string;
     refs: string[];
@@ -105,4 +107,10 @@ export interface StudySet {
   review: string;
   quiz: Quiz | null;
   bestScore?: { correct: number; total: number; points: number };
+  /** Free-form notes the student writes for this set. */
+  notes?: string;
+  /** The class this set belongs to (a Canvas course name, or typed). */
+  course?: string;
+  /** Every question already asked in earlier quizzes of this set. */
+  pastQuestions?: string[];
 }

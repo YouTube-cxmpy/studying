@@ -4,9 +4,25 @@ Upload any learning material and get three study resources built from it:
 
 1. **Full lesson** – a complete, teacher-style lesson covering everything in the material, with worked examples, check-yourself questions, a glossary and a summary.
 2. **Short review** – a two-page study guide: must-know concepts, key terms, formulas/dates, common mistakes, and a quick self-test.
-3. **Practice quiz** – a game-style quiz. Tap one of four answer tiles (or press 1–4 / A–D); optional timer, points, streaks, an explanation after every answer, a per-topic breakdown, and "retry what I missed".
+3. **Practice quiz** – a game-style quiz with no timer. Tap one of four answer tiles (or press 1–4 / A–D); points, streaks, an explanation after every answer, a per-topic breakdown, and "retry what I missed". When you finish, **New quiz, different questions** writes a fresh quiz that avoids every question you have already played.
+
+Each study set also has a **My notes** tab (with one-click "Add missed to my notes" from the quiz results) and can be filed under a **class**. A class page brings together its study sets, class-wide notes, and the notes from each set. Connecting Canvas files new sets under the Canvas course automatically.
 
 Students can also connect **Canvas** (read-only) to import course pages, files and assignment instructions, and to personalize the resources around upcoming tests and recent scores.
+
+## Get the website version
+
+The website is this repository (a Next.js app on branch `claude/blissful-lamport-yti9g9`). It is not hosted anywhere yet, so you run it yourself:
+
+```bash
+git clone https://github.com/YouTube-cxmpy/studying.git && cd studying
+git checkout claude/blissful-lamport-yti9g9
+npm install
+cp .env.example .env.local      # add ANTHROPIC_API_KEY
+npm run dev                     # open http://localhost:3000
+```
+
+To put it online for a tester, deploy it to any Node host (Render, Railway, Fly.io, a VPS) with `npm run build` / `npm start`, set `ANTHROPIC_API_KEY`, `SESSION_SECRET`, `APP_ACCESS_CODE` and `APP_URL`, and use HTTPS. Avoid hosts that cap request bodies at a few MB (Vercel's limit is 4.5 MB), because uploads would fail.
 
 ## Run it
 
