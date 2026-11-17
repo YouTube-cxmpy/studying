@@ -151,7 +151,15 @@ try {
   assert.ok((await page.locator(".prose table").count()) > 0, "tables render");
   assert.equal(await page.locator(".toc a").count(), 6, "table of contents lists the sections");
   if (shots) await page.screenshot({ path: path.join(out, "03-lesson.png") });
-  step("lesson streams in and renders (math, tables, contents)");
+  // Pictures: the graph is plotted from its formula; the diagram is sanitized.
+  assert.ok((await page.locator(".prose .figure-graph path.g-curve").getAttribute("d")).length > 200, "the parabola is plotted");
+  await page.locator(".prose .figure-graph").getByText("vertex (−2, −3)").waitFor();
+  await page.locator(".prose .figure-diagram svg text", { hasText: "Lipid bilayer" }).waitFor();
+  assert.equal(await page.locator(".prose .figure-diagram script").count(), 0, "scripts are stripped from diagrams");
+  assert.equal(await page.locator(".prose .figure-diagram [onclick]").count(), 0, "event handlers are stripped from diagrams");
+  assert.equal(await page.evaluate(() => window.__pwned), undefined, "diagram code never runs");
+  if (shots) await page.locator(".prose .figure-graph").screenshot({ path: path.join(out, "03b-graph.png") });
+  step("lesson streams in and renders (math, tables, contents, graphs, diagrams)");
 
   await page.getByRole("tab", { name: /Short review/ }).click();
   await page.getByRole("heading", { name: "The big picture" }).waitFor();
@@ -170,9 +178,9 @@ try {
   step("flashcards flip and remember what you know");
 
   // --- What was sent to the model -----------------------------------------------------------
-  assert.equal(requests.length, 4, "four model requests");
+  assert.equal(requests.length, 5, "four resources plus the answer check");
   const byKind = Object.fromEntries(requests.map((r) => [r.kind, r]));
-  assert.deepEqual(Object.keys(byKind).sort(), ["cards", "lesson", "quiz", "review"]);
+  assert.deepEqual(Object.keys(byKind).sort(), ["cards", "lesson", "quiz", "review", "verify"]);
   assert.ok(byKind.lesson.at <= byKind.review.at && byKind.lesson.at <= byKind.quiz.at, "lesson goes first to warm the cache");
   const shared = (r) => JSON.stringify(r.body.messages[0].content.slice(0, -1));
   assert.equal(shared(byKind.lesson), shared(byKind.review), "shared prefix is byte-identical (lesson/review)");
@@ -189,6 +197,9 @@ try {
   assert.equal(byKind.lesson.body.fallbacks, "default");
   assert.match(String(byKind.lesson.beta), /server-side-fallback-2026-07-01/);
   assert.match(byKind.quiz.body.messages[0].content.at(-1).text, /10 multiple-choice/);
+  assert.match(byKind.quiz.body.messages[0].content.at(-1).text, /Mix two kinds of question/, "mixed quiz style by default");
+  assert.match(byKind.verify.body.messages[0].content.at(-1).text, /CHECK the answers[\s\S]*\[0\] Osmosis/, "every answer is checked");
+  assert.equal(shared(byKind.lesson), shared(byKind.verify), "the check reuses the cached material");
   step("model input: all materials, student context, no name or token, cacheable prefix");
 
   // --- Quiz ------------------------------------------------------------------------------------
@@ -239,6 +250,11 @@ try {
   for (let i = 0; i < 10; i++) {
     await page.getByText(`Question ${i + 1}`, { exact: false }).first().waitFor();
     const trueFalse = (await page.locator(".tile").count()) === 2;
+    if (i === 0) {
+      assert.ok(await page.locator(".quiz-question .quiz-figure path.g-curve").count(), "the question's graph is drawn");
+      assert.ok(await page.locator(".quiz-question .problem-tag").count(), "practice problems are labelled");
+      if (shots) await page.screenshot({ path: path.join(out, "07c-figure-question.png") });
+    }
     if (i === 1) {
       await page.getByRole("button", { name: /50\/50/ }).click();
       assert.equal(await page.locator(".tile.is-gone").count(), 2, "50/50 removes two wrong answers");
@@ -255,15 +271,19 @@ try {
   await page.getByRole("button", { name: "Added to notes" }).waitFor();
   requests.length = 0;
   await page.getByRole("radio", { name: "Harder" }).click();
+  await page.getByRole("radio", { name: "Practice problems" }).click();
   await page.getByRole("radio", { name: "20", exact: true }).click();
   await page.getByRole("button", { name: "Write my new quiz" }).click();
   await page.getByRole("button", { name: "Start quiz" }).waitFor({ timeout: 60_000 });
-  assert.equal(requests.length, 1, "a new quiz is a single request");
+  assert.equal(requests.length, 2, "a new quiz is written, then checked");
   assert.equal(requests[0].kind, "quiz");
   const nq = JSON.stringify(requests[0].body.messages[0].content);
   assert.ok(nq.includes("<already_asked>") && nq.includes("Question 1: which process moves water"), "earlier questions are passed to avoid");
   assert.ok(nq.includes("phospholipid bilayer"), "the lesson is the material for the new quiz");
   assert.ok(nq.includes("20 multiple-choice") && nq.includes("challenging quiz"), "length and difficulty choices reach the model");
+  assert.ok(nq.includes("This quiz is PRACTICE PROBLEMS"), "the practice-problem style reaches the model");
+  await page.getByText("1 question was left out of the quiz because a second check didn't agree").waitFor();
+  assert.ok(await page.getByText("20 questions across").count(), "the disputed question is dropped, the rest kept");
   assert.ok(nq.includes('has been missing questions on these topics: \\"Membrane structure\\"'), "the new quiz leans on missed topics");
   assert.equal(await page.getByText("Best so far").count(), 0, "best score resets with the new quiz");
   await page.getByRole("tab", { name: "My notes" }).click();
@@ -304,7 +324,7 @@ try {
   await page.getByRole("tab", { name: /Practice quiz/ }).click();
   await page.getByRole("button", { name: "Try again" }).click();
   await page.getByRole("button", { name: "Start quiz" }).waitFor({ timeout: 60_000 });
-  assert.equal(requests.length - before, 1, "retry regenerates only the failed resource");
+  assert.equal(requests.length - before, 2, "retry regenerates only the failed resource (plus its check)");
   await page.getByRole("tab", { name: /Full lesson/ }).click();
   await page.getByRole("heading", { name: "Membrane structure" }).waitFor();
   step("a failed quiz shows an error and retries alone, keeping the lesson");

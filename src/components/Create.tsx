@@ -2,13 +2,14 @@
 
 import { useRef, useState } from "react";
 import { formatBytes, prepareFile } from "@/lib/client";
-import type { QuizDifficulty, SessionInfo } from "@/lib/types";
+import type { QuizDifficulty, QuizStyle, SessionInfo } from "@/lib/types";
 import { CanvasPanel, type CanvasSelection } from "./CanvasPanel";
 
 export interface CreateOptions {
   gradeLevel: string;
   quizLength: number;
   difficulty: QuizDifficulty;
+  quizStyle: QuizStyle;
   focus: string;
   /** Class this set is filed under. Blank falls back to the chosen Canvas course. */
   course: string;
@@ -204,6 +205,36 @@ export function Create({
               ))}
             </div>
           </div>
+        </div>
+        <div className="field">
+          <span id="quiz-style-label">Quiz questions</span>
+          <div className="segmented" role="radiogroup" aria-labelledby="quiz-style-label">
+            {(
+              [
+                ["material", "The material"],
+                ["mixed", "Mix"],
+                ["practice", "Practice problems"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={options.quizStyle === value}
+                className={options.quizStyle === value ? "is-on" : ""}
+                onClick={() => setOptions({ ...options, quizStyle: value })}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <span className="muted small hint">
+            {options.quizStyle === "practice"
+              ? "New problems that use the methods in your material, like “complete the square to find the vertex”, each with a worked solution."
+              : options.quizStyle === "material"
+                ? "Questions about the facts and ideas in your material."
+                : "Questions about your material plus new practice problems (about half, for math and science)."}
+          </span>
         </div>
         <div className="field">
           <span id="quiz-difficulty-label">Quiz difficulty</span>

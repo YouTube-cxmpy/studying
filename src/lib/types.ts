@@ -2,6 +2,8 @@
 
 export type ResourceKind = "lesson" | "review" | "cards" | "quiz";
 export type QuizDifficulty = "mixed" | "easier" | "harder";
+/** Questions about the material, new practice problems, or a mix. */
+export type QuizStyle = "mixed" | "material" | "practice";
 
 export interface QuizQuestion {
   question: string;
@@ -10,6 +12,10 @@ export interface QuizQuestion {
   explanation: string;
   topic: string;
   difficulty: "recall" | "understanding" | "application";
+  /** "problem" = a new practice problem the model made up; "concept" = tests the material itself. */
+  kind?: "concept" | "problem";
+  /** A fenced ```graph or ```svg block shown above the question. */
+  figure?: string;
 }
 
 export interface Flashcard {
@@ -47,8 +53,8 @@ export type GenerateEvent =
   | { type: "materials"; items: MaterialSummary[]; warnings: string[]; personalized: boolean }
   | { type: "start"; resource: ResourceKind }
   | { type: "delta"; resource: "lesson" | "review"; text: string }
-  | { type: "progress"; resource: "quiz" | "cards"; count: number }
-  | { type: "done"; resource: ResourceKind; quiz?: Quiz; cards?: Flashcard[]; truncated?: boolean; text?: string }
+  | { type: "progress"; resource: "quiz" | "cards"; count: number; checking?: boolean }
+  | { type: "done"; resource: ResourceKind; quiz?: Quiz; cards?: Flashcard[]; note?: string; truncated?: boolean; text?: string }
   | { type: "error"; resource?: ResourceKind; message: string }
   | { type: "end" };
 
@@ -58,6 +64,7 @@ export interface GenerateOptions {
   gradeLevel: string;
   focus: string;
   difficulty?: QuizDifficulty;
+  quizStyle?: QuizStyle;
   /** Topics the student keeps missing; a new quiz leans toward these. */
   focusTopics?: string[];
   /** Questions from earlier quizzes on this material; a new quiz must not repeat them. */

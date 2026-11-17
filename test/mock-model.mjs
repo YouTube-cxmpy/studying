@@ -15,6 +15,16 @@ This lesson covers how the cell membrane is built and how substances cross it.
 
 The membrane is a **phospholipid bilayer**. The rate of diffusion follows $J = -D \\frac{dC}{dx}$.
 
+\`\`\`graph
+{"x": [-7, 3], "y": [-5, 8], "functions": [{"fn": "x^2 + 4x + 1", "label": "y = x² + 4x + 1"}], "points": [{"x": -2, "y": -3, "label": "vertex (−2, −3)"}], "vlines": [{"x": -2, "label": "x = −2"}]}
+\`\`\`
+*The parabola and its vertex.*
+
+\`\`\`svg
+<svg viewBox="0 0 480 120" xmlns="http://www.w3.org/2000/svg"><script>window.__pwned = 1</script><rect x="20" y="40" width="440" height="40" fill="none" stroke="#333" onclick="window.__pwned = 2"/><text x="240" y="66" font-family="sans-serif" font-size="14" text-anchor="middle">Lipid bilayer</text></svg>
+\`\`\`
+*A labelled membrane diagram.*
+
 | Transport | Energy | Example |
 | --- | --- | --- |
 | Diffusion | None | $O_2$ |
@@ -72,14 +82,23 @@ const CARDS = {
 };
 
 const topics = ["Membrane structure", "Passive transport", "Active transport"];
-function quiz(count) {
+function quiz(count, extra = false) {
   return {
     title: "Cell Membranes and Transport",
-    questions: Array.from({ length: count }, (_, i) =>
+    questions: [...Array.from({ length: count }, (_, i) =>
       i % 5 === 4
         ? { topic: topics[i % 3], difficulty: "recall", question: `True or false (${i + 1}): osmosis requires ATP.`, options: ["True", "False"], correctIndex: 1, explanation: "Osmosis is passive transport." }
-        : { topic: topics[i % 3], difficulty: "understanding", question: `Question ${i + 1}: which process moves water across a membrane? Rate is $J$.`, options: ["Osmosis", "Exocytosis", "Sodium pump", "Phagocytosis"], correctIndex: 0, explanation: "Osmosis is the diffusion of water; the others move other things." },
-    ),
+        : {
+            topic: topics[i % 3],
+            difficulty: "understanding",
+            kind: i % 3 === 0 ? "problem" : "concept",
+            figure: i === 0 ? '\`\`\`graph\n{"x": [-5, 5], "functions": [{"fn": "(x-1)^2 - 2"}]}\n\`\`\`' : "",
+            question: `Question ${i + 1}: which process moves water across a membrane? Rate is $J$.`,
+            options: ["Osmosis", "Exocytosis", "Sodium pump", "Phagocytosis"],
+            correctIndex: 0,
+            explanation: "Osmosis is the diffusion of water; the others move other things.",
+          },
+    ), ...(extra ? [{ topic: "Passive transport", difficulty: "application", kind: "problem", figure: "", question: "DISPUTED: which process needs ATP?", options: ["Osmosis", "Diffusion", "Facilitated diffusion", "Active transport"], correctIndex: 0, explanation: "Deliberately wrong key." }] : [])],
   };
 }
 
@@ -94,7 +113,7 @@ const server = http.createServer(async (req, res) => {
   for await (const chunk of req) raw += chunk;
   const body = JSON.parse(raw);
   const instruction = body.messages[0].content.at(-1).text;
-  const kind = /FLASHCARDS/.test(instruction) ? "cards" : body.output_config?.format ? "quiz" : /SHORT REVIEW/.test(instruction) ? "review" : "lesson";
+  const kind = /^CHECK the answers/.test(instruction) ? "verify" : /FLASHCARDS/.test(instruction) ? "cards" : body.output_config?.format ? "quiz" : /SHORT REVIEW/.test(instruction) ? "review" : "lesson";
   requests.push({ kind, body, beta: req.headers["anthropic-beta"], at: Date.now() });
 
   if (process.env.MOCK_MODEL_FAIL === kind) {
@@ -104,7 +123,20 @@ const server = http.createServer(async (req, res) => {
   }
 
   const count = Number(/(\d+) multiple-choice/.exec(instruction)?.[1] ?? 10);
-  const text = kind === "quiz" ? JSON.stringify(quiz(count)) : kind === "cards" ? JSON.stringify(CARDS) : kind === "review" ? REVIEW : LESSON;
+  // The checker answers what the mock's quizzes treat as right, and disagrees with the deliberately wrong key.
+  const verify = () => ({
+    checks: instruction
+      .split(/\n\n(?=\d+\. )/)
+      .filter((b) => /^\d+\. /.test(b.replace(/^[\s\S]*<questions>\n/, "")))
+      .map((block) => {
+        const body = block.replace(/^[\s\S]*<questions>\n/, "");
+        const index = Number(/^(\d+)\./.exec(body)[1]);
+        const options = [...body.matchAll(/\[(\d)\] (.+)/g)].map((m) => m[2].trim());
+        const answerIndex = /DISPUTED/.test(body) ? 3 : options.findIndex((o) => o === "Osmosis" || o === "False");
+        return { index, answerIndex };
+      }),
+  });
+  const text = kind === "verify" ? JSON.stringify(verify()) : kind === "quiz" ? JSON.stringify(quiz(count, /<already_asked>/.test(instruction))) : kind === "cards" ? JSON.stringify(CARDS) : kind === "review" ? REVIEW : LESSON;
 
   res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
   const event = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`);

@@ -35,6 +35,7 @@ function parseOptions(raw: FormDataEntryValue | null): GenerateOptions | null {
       gradeLevel: String(o.gradeLevel ?? "").slice(0, 60),
       focus: String(o.focus ?? "").slice(0, 600),
       difficulty: o.difficulty === "easier" || o.difficulty === "harder" ? o.difficulty : "mixed",
+      quizStyle: o.quizStyle === "material" || o.quizStyle === "practice" ? o.quizStyle : "mixed",
       focusTopics: Array.isArray(o.focusTopics)
         ? o.focusTopics.filter((t): t is string => typeof t === "string" && t.trim() !== "").slice(0, 8)
         : [],
@@ -162,6 +163,7 @@ export async function POST(request: Request): Promise<Response> {
           resources: options.resources,
           quiz: {
             count: options.quizLength,
+            style: options.quizStyle ?? "mixed",
             difficulty: options.difficulty ?? "mixed",
             focusTopics: options.focusTopics ?? [],
             avoid: options.avoid ?? [],

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { downloadText, slugify } from "@/lib/client";
 import type { MaterialSummary, QuizAttempt, ResourceKind, StudySet } from "@/lib/types";
 import { Flashcards } from "./Flashcards";
-import { Markdown, headingsOf } from "./Markdown";
+import { Markdown, headingsOf, hideOpenFigure } from "./Markdown";
 import { type NewQuizOptions, Quiz } from "./Quiz";
 
 export type Tab = ResourceKind | "notes";
@@ -111,7 +111,7 @@ function Document({
           </div>
         )}
         <article className={`prose prose-${kind}`}>
-          <Markdown text={text} />
+          <Markdown text={state.status === "streaming" ? hideOpenFigure(text) : text} />
           {state.status === "streaming" && <span className="caret" aria-hidden="true" />}
         </article>
         {state.truncated && (
@@ -188,6 +188,7 @@ export function StudyView({
   set,
   states,
   quizProgress,
+  quizChecking,
   quizLength,
   materials,
   warnings,
@@ -208,6 +209,7 @@ export function StudyView({
   set: StudySet;
   states: ResourceStates;
   quizProgress: number;
+  quizChecking: boolean;
   quizLength: number;
   materials: MaterialSummary[];
   warnings: string[];
@@ -328,7 +330,9 @@ export function StudyView({
           ) : (
             <Waiting
               label={
-                quizProgress > 0
+                quizChecking
+                  ? "Checking every answer with a second, independent solve…"
+                  : quizProgress > 0
                   ? `Writing your quiz… ${Math.min(quizProgress, quizLength)} of ${quizLength} questions`
                   : "Writing your quiz…"
               }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Quiz as QuizData, QuizAttempt, QuizDifficulty, QuizQuestion } from "@/lib/types";
+import type { Quiz as QuizData, QuizAttempt, QuizDifficulty, QuizQuestion, QuizStyle } from "@/lib/types";
 import { Markdown } from "./Markdown";
 
 const LETTERS = ["A", "B", "C", "D"];
@@ -13,6 +13,7 @@ const LEVELS: { id: QuizQuestion["difficulty"]; label: string }[] = [
 
 export interface NewQuizOptions {
   length: number;
+  style: QuizStyle;
   difficulty: QuizDifficulty;
   focusTopics: string[];
 }
@@ -117,6 +118,7 @@ export function Quiz({
   // Setup choices
   const [mode, setMode] = useState<"practice" | "test">("practice");
   const [level, setLevel] = useState<"all" | QuizQuestion["difficulty"]>("all");
+  const [kind, setKind] = useState<"all" | "concept" | "problem">("all");
   const [offTopics, setOffTopics] = useState<Set<string>>(new Set());
   const [limit, setLimit] = useState(0); // 0 = all that match
   const [mixOrder, setMixOrder] = useState(false);
@@ -132,6 +134,9 @@ export function Quiz({
   // New-quiz choices
   const [newLength, setNewLength] = useState(quiz.questions.length);
   const [newDifficulty, setNewDifficulty] = useState<QuizDifficulty>("mixed");
+  const [newStyle, setNewStyle] = useState<QuizStyle>(() =>
+    quiz.questions.every((q) => q.kind === "problem") ? "practice" : quiz.questions.some((q) => q.kind === "problem") ? "mixed" : "material",
+  );
   const [focusWeak, setFocusWeak] = useState(true);
 
   const nextButton = useRef<HTMLButtonElement>(null);
@@ -139,9 +144,16 @@ export function Quiz({
   const feedback = useRef<HTMLDivElement>(null);
 
   const topics = useMemo(() => [...new Set(quiz.questions.map((q) => q.topic))], [quiz]);
+  const problemCount = quiz.questions.filter((q) => q.kind === "problem").length;
   const pool = useMemo(
-    () => quiz.questions.filter((q) => (level === "all" || q.difficulty === level) && !offTopics.has(q.topic)),
-    [quiz, level, offTopics],
+    () =>
+      quiz.questions.filter(
+        (q) =>
+          (level === "all" || q.difficulty === level) &&
+          (kind === "all" || (q.kind ?? "concept") === kind) &&
+          !offTopics.has(q.topic),
+      ),
+    [quiz, level, kind, offTopics],
   );
   const count = limit > 0 ? Math.min(limit, pool.length) : pool.length;
   const mastery = useMemo(() => topicTotals(attempts), [attempts]);
@@ -270,7 +282,8 @@ export function Quiz({
           <p className="eyebrow">Practice quiz</p>
           <h2>{quiz.title}</h2>
           <p className="muted">
-            {quiz.questions.length} questions across {topics.length} topic{topics.length === 1 ? "" : "s"}. Tap an answer —
+            {quiz.questions.length} questions across {topics.length} topic{topics.length === 1 ? "" : "s"}
+            {problemCount > 0 ? `, ${problemCount === quiz.questions.length ? "all" : problemCount} of them practice problems with worked solutions` : ""}. Tap an answer —
             no typing, no timer.
           </p>
           {best && (
@@ -305,6 +318,19 @@ export function Quiz({
               ? "Practice: see why each answer is right as you go."
               : "Test: no feedback until the end, like the real thing."}
           </p>
+
+          {problemCount > 0 && problemCount < quiz.questions.length && (
+            <Segmented
+              label="Question type"
+              value={kind}
+              onChange={setKind}
+              options={[
+                { value: "all", label: "All" },
+                { value: "problem", label: `Practice problems ${problemCount}` },
+                { value: "concept", label: `Concepts ${quiz.questions.length - problemCount}` },
+              ]}
+            />
+          )}
 
           <Segmented
             label="Level"
@@ -542,6 +568,16 @@ export function Quiz({
                 options={[...new Set([10, 15, 20, quiz.questions.length])].sort((a, b) => a - b).map((n) => ({ value: n, label: String(n) }))}
               />
               <Segmented
+                label="Questions about"
+                value={newStyle}
+                onChange={setNewStyle}
+                options={[
+                  { value: "material", label: "The material" },
+                  { value: "mixed", label: "Mix" },
+                  { value: "practice", label: "Practice problems" },
+                ]}
+              />
+              <Segmented
                 label="Difficulty"
                 value={newDifficulty}
                 onChange={setNewDifficulty}
@@ -561,7 +597,12 @@ export function Quiz({
             <button
               className="btn btn-primary"
               onClick={() =>
-                onNewQuiz({ length: newLength, difficulty: newDifficulty, focusTopics: focusWeak ? missedTopics : [] })
+                onNewQuiz({
+                  length: newLength,
+                  style: newStyle,
+                  difficulty: newDifficulty,
+                  focusTopics: focusWeak ? missedTopics : [],
+                })
               }
             >
               Write my new quiz
@@ -579,6 +620,11 @@ export function Quiz({
           {reviewList.length === 0 && <p className="muted">Nothing missed. Nice.</p>}
           {reviewList.map((a, i) => (
             <article className={`missed-item${a.correct ? " was-right" : ""}`} key={i}>
+              {a.question.figure && (
+                <div className="quiz-figure">
+                  <Markdown text={a.question.figure} />
+                </div>
+              )}
               <div className="missed-q">
                 <Markdown text={a.question.question} inline />
               </div>
@@ -625,8 +671,14 @@ export function Quiz({
 
       <div className="quiz-question">
         <span className="topic-chip">
+          {current.kind === "problem" && <b className="problem-tag">Practice problem</b>}
           {current.topic} · {LEVELS.find((l) => l.id === current.difficulty)!.label}
         </span>
+        {current.figure && (
+          <div className="quiz-figure">
+            <Markdown text={current.figure} />
+          </div>
+        )}
         <h2>
           <Markdown text={current.question} inline />
         </h2>

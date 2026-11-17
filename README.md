@@ -11,6 +11,10 @@ Upload any learning material and get four study resources built from it:
    - Afterwards: results by topic and by level, a comparison with your last attempt, a review of every question, "retry what I missed", and a **new quiz with different questions** where you pick the length, the difficulty, and whether to focus on what you missed.
    - Every attempt is saved, so the quiz screen shows your score history and how well you know each topic.
 
+**Pictures.** Lessons, reviews, quiz questions and worked solutions include pictures where they help. Graphs of functions are drawn by the app from the exact formula (so a plotted vertex is where the math says it is); other diagrams are drawn by the model as SVG and sanitized before display.
+
+**Practice problems.** Choose what the quiz asks about: *The material* (facts and ideas from it), *Practice problems* (new problems that use its methods, e.g. "Complete the square to find the vertex of y = x² − 6x + 5", each with a step-by-step solution), or *Mix* (the default). Before any quiz is shown, a second independent pass solves every question; any question where it gets a different answer is left out, and you're told how many.
+
 Each study set also has a **My notes** tab (with one-click "Add missed to my notes" from the quiz results) and can be filed under a **class**. A class page brings together its study sets, class-wide notes, and the notes from each set. Connecting Canvas files new sets under the Canvas course automatically, and shows how the class is going: current grade, what's coming up, low scores and missing work.
 
 ## Get the website version

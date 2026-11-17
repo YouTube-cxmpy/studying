@@ -1,6 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Part } from "./extract";
-import { CARDS_SCHEMA, QUIZ_SCHEMA, type QuizOptions, SYSTEM_PROMPT, instructionFor, sharedPreamble } from "./prompts";
+import {
+  CARDS_SCHEMA,
+  QUIZ_SCHEMA,
+  type QuizOptions,
+  SYSTEM_PROMPT,
+  VERIFY_SCHEMA,
+  instructionFor,
+  sharedPreamble,
+  verifyPrompt,
+} from "./prompts";
 import type { Flashcard, GenerateEvent, Quiz, QuizQuestion, ResourceKind } from "./types";
 
 type ContentBlock = Anthropic.Beta.BetaContentBlockParam;
@@ -105,6 +114,8 @@ export function normalizeQuiz(raw: unknown): Quiz | null {
         q.difficulty === "recall" || q.difficulty === "understanding" || q.difficulty === "application"
           ? q.difficulty
           : "understanding",
+      kind: q.kind === "problem" ? "problem" : "concept",
+      figure: typeof q.figure === "string" && /^\s*```(graph|svg)\b[\s\S]*```\s*$/.test(q.figure) ? q.figure.trim().slice(0, 20000) : undefined,
     });
   }
   if (questions.length < 3) return null;
@@ -125,6 +136,48 @@ export function normalizeCards(raw: unknown): Flashcard[] | null {
     cards.push({ front, back, topic: typeof c.topic === "string" && c.topic.trim() ? c.topic.trim() : "General" });
   }
   return cards.length >= 3 ? cards : null;
+}
+
+/**
+ * Solves every question again without the intended answer and returns the
+ * indexes the checker agrees with, or null if the check itself couldn't run.
+ */
+async function verifyQuiz(
+  shared: ContentBlock[],
+  quiz: Quiz,
+  signal: AbortSignal,
+): Promise<Set<number> | null> {
+  try {
+    const stream = anthropic().beta.messages.stream(
+      {
+        model: MODEL,
+        max_tokens: 64000,
+        ...(SUPPORTS_FALLBACK ? { betas: [FALLBACK_BETA], fallbacks: "default" as const } : {}),
+        output_config: { effort: EFFORT, format: { type: "json_schema" as const, schema: VERIFY_SCHEMA } },
+        system: SYSTEM_PROMPT,
+        messages: [{ role: "user", content: [...shared, { type: "text", text: verifyPrompt(quiz.questions) }] }],
+      },
+      { signal },
+    );
+    const message = await stream.finalMessage();
+    if (message.stop_reason !== "end_turn") return null;
+    const text = message.content
+      .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("");
+    const checks = (JSON.parse(text) as { checks?: { index?: unknown; answerIndex?: unknown }[] }).checks;
+    if (!Array.isArray(checks)) return null;
+    const agreed = new Set<number>();
+    for (const c of checks) {
+      const i = Number(c.index);
+      if (Number.isInteger(i) && quiz.questions[i] && Number(c.answerIndex) === quiz.questions[i].correctIndex) agreed.add(i);
+    }
+    return agreed;
+  } catch (err) {
+    if (signal.aborted) throw err;
+    console.error("[generate] quiz check failed:", err instanceof Error ? err.message : err);
+    return null;
+  }
 }
 
 interface RunArgs {
@@ -241,7 +294,27 @@ export async function runGeneration(args: RunArgs): Promise<void> {
           });
           return;
         }
-        emit({ type: "done", resource: kind, quiz });
+        // A second, independent pass catches wrong answer keys before the student sees them.
+        emit({ type: "progress", resource: "quiz", count: quiz.questions.length, checking: true });
+        const agreed = await verifyQuiz(shared, quiz, signal);
+        let note: string | undefined;
+        if (agreed) {
+          const kept = quiz.questions.filter((_, i) => agreed.has(i));
+          const removed = quiz.questions.length - kept.length;
+          if (kept.length < 3) {
+            emit({
+              type: "error",
+              resource: kind,
+              message: "A second check disagreed with too many answers in this quiz, so it wasn't shown. Try generating it again.",
+            });
+            return;
+          }
+          if (removed > 0) {
+            note = `${removed} question${removed === 1 ? " was" : "s were"} left out of the quiz because a second check didn't agree with the answer.`;
+          }
+          quiz = { ...quiz, questions: kept };
+        }
+        emit({ type: "done", resource: kind, quiz, note });
       } else if (!finalText.trim()) {
         emit({ type: "error", resource: kind, message: "Nothing was generated. Please try again." });
       } else {

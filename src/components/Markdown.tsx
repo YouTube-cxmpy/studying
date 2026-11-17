@@ -6,6 +6,7 @@ import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { slugify } from "@/lib/client";
+import { FigureBlock } from "./Figure";
 
 function textOf(node: ReactNode): string {
   return Children.toArray(node)
@@ -28,6 +29,17 @@ export const Markdown = memo(function Markdown({ text, inline = false }: { text:
       rehypePlugins={rehypePlugins}
       components={{
         h2: ({ children }) => <h2 id={slugify(textOf(children))}>{children}</h2>,
+        pre: ({ children }) => {
+          // Fenced ```graph and ```svg blocks are pictures, not code.
+          const code = Children.toArray(children)[0];
+          if (isValidElement<{ className?: string; children?: ReactNode }>(code)) {
+            const lang = /language-(\w+)/.exec(code.props.className ?? "")?.[1];
+            if (lang === "graph" || lang === "svg") {
+              return <FigureBlock lang={lang} source={textOf(code.props.children)} />;
+            }
+          }
+          return <pre>{children}</pre>;
+        },
         table: ({ children }) => (
           <div className="table-scroll">
             <table>{children}</table>
@@ -45,6 +57,17 @@ export const Markdown = memo(function Markdown({ text, inline = false }: { text:
     </ReactMarkdown>
   );
 });
+
+/**
+ * While a document streams in, a picture block that has started but not finished
+ * would flash an error; leave it out until its closing fence arrives.
+ */
+export function hideOpenFigure(markdown: string): string {
+  const fences = [...markdown.matchAll(/^\s*```(\w*)/gm)];
+  if (fences.length % 2 === 0) return markdown;
+  const last = fences[fences.length - 1];
+  return last[1] === "graph" || last[1] === "svg" ? markdown.slice(0, last.index) : markdown;
+}
 
 /** The "## " headings of a document, for the table of contents. */
 export function headingsOf(markdown: string): { id: string; title: string }[] {

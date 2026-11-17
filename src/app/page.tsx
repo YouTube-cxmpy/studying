@@ -8,11 +8,11 @@ import { titleOf } from "@/components/Markdown";
 import { type ResourceStates, StudyView, type Tab } from "@/components/StudyView";
 import { RequestError, api, loadClassNotes, loadLibrary, newId, saveClassNotes, saveLibrary, streamGenerate } from "@/lib/client";
 import type { NewQuizOptions } from "@/components/Quiz";
-import type { GenerateOptions, MaterialSummary, QuizAttempt, QuizDifficulty, ResourceKind, SessionInfo, StudySet } from "@/lib/types";
+import type { GenerateOptions, MaterialSummary, QuizAttempt, QuizDifficulty, QuizStyle, ResourceKind, SessionInfo, StudySet } from "@/lib/types";
 
 const ALL: ResourceKind[] = ["lesson", "review", "cards", "quiz"];
 const OPTIONS_KEY = "studykit.options.v1";
-const DEFAULT_OPTIONS: CreateOptions = { gradeLevel: "High school", quizLength: 15, difficulty: "mixed", focus: "", course: "" };
+const DEFAULT_OPTIONS: CreateOptions = { gradeLevel: "High school", quizLength: 15, difficulty: "mixed", quizStyle: "mixed", focus: "", course: "" };
 
 function idleStates(set?: StudySet): ResourceStates {
   return {
@@ -67,6 +67,7 @@ export default function Home() {
   const [classOpen, setClassOpen] = useState<string | null>(null);
   const [classNotes, setClassNotes] = useState<Record<string, string>>({});
   const [quizProgress, setQuizProgress] = useState(0);
+  const [quizChecking, setQuizChecking] = useState(false);
   const [cardsProgress, setCardsProgress] = useState(0);
   const [materials, setMaterials] = useState<MaterialSummary[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -91,7 +92,13 @@ export default function Home() {
     setClassNotes(loadClassNotes());
     try {
       const saved = JSON.parse(localStorage.getItem(OPTIONS_KEY) ?? "null") as Partial<CreateOptions> | null;
-      if (saved) setOptionsState((o) => ({ ...o, gradeLevel: saved.gradeLevel ?? o.gradeLevel, quizLength: saved.quizLength ?? o.quizLength }));
+      if (saved)
+        setOptionsState((o) => ({
+          ...o,
+          gradeLevel: saved.gradeLevel ?? o.gradeLevel,
+          quizLength: saved.quizLength ?? o.quizLength,
+          quizStyle: saved.quizStyle ?? o.quizStyle,
+        }));
     } catch {
       // Ignore unreadable preferences.
     }
@@ -107,7 +114,10 @@ export default function Home() {
   const setOptions = useCallback((next: CreateOptions) => {
     setOptionsState(next);
     try {
-      localStorage.setItem(OPTIONS_KEY, JSON.stringify({ gradeLevel: next.gradeLevel, quizLength: next.quizLength }));
+      localStorage.setItem(
+        OPTIONS_KEY,
+        JSON.stringify({ gradeLevel: next.gradeLevel, quizLength: next.quizLength, quizStyle: next.quizStyle }),
+      );
     } catch {
       // Preferences are optional.
     }
@@ -156,7 +166,14 @@ export default function Home() {
       resources: ResourceKind[],
       base: StudySet | null,
       // A fresh quiz on a saved set: write from this text and steer away from these questions.
-      extra?: { text: string; avoid?: string[]; quizLength?: number; difficulty?: QuizDifficulty; focusTopics?: string[] },
+      extra?: {
+        text: string;
+        avoid?: string[];
+        quizLength?: number;
+        quizStyle?: QuizStyle;
+        difficulty?: QuizDifficulty;
+        focusTopics?: string[];
+      },
     ) => {
       detach();
       const controller = new AbortController();
@@ -169,6 +186,7 @@ export default function Home() {
         gradeLevel: options.gradeLevel,
         focus: extra ? "" : options.focus,
         difficulty: extra?.difficulty ?? options.difficulty,
+        quizStyle: extra?.quizStyle ?? options.quizStyle,
         focusTopics: extra?.focusTopics,
         avoid: extra?.avoid,
         canvas: !extra && canvas ? { courseId: canvas.courseId, refs: canvas.refs, personalize: canvas.personalize } : undefined,
@@ -238,6 +256,7 @@ export default function Home() {
               return next;
             });
             setQuizProgress(0);
+            setQuizChecking(false);
             setCardsProgress(0);
             setTab(resources[0]);
             setCanRetry(true);
@@ -260,7 +279,10 @@ export default function Home() {
               dirty = true;
               break;
             case "progress":
-              if (event.resource === "quiz") setQuizProgress(event.count);
+              if (event.resource === "quiz") {
+                setQuizProgress(event.count);
+                setQuizChecking(Boolean(event.checking));
+              }
               else setCardsProgress(event.count);
               break;
             case "done":
@@ -278,6 +300,7 @@ export default function Home() {
               refreshTitle();
               dirty = true;
               finished.add(event.resource);
+              if (event.note) setWarnings((w) => [...w, event.note!]);
               setState(event.resource, { status: "done", truncated: event.truncated });
               break;
             case "error":
@@ -434,6 +457,7 @@ export default function Home() {
       text: material,
       avoid,
       quizLength: choice.length,
+      quizStyle: choice.style,
       difficulty: choice.difficulty,
       focusTopics: choice.focusTopics,
     });
@@ -543,6 +567,7 @@ export default function Home() {
             onKnown={(known) => patchSet({ known })}
             onMakeCards={!generating && (current.lesson || current.review) ? makeCards : undefined}
             cardsProgress={cardsProgress}
+            quizChecking={quizChecking}
             onAddToNotes={onAddToNotes}
             onNotes={(notes) => patchSet({ notes })}
             onCourse={(course) => patchSet({ course })}
