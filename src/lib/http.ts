@@ -32,6 +32,8 @@ export async function requireCanvas(): Promise<CanvasSession> {
 
 export function canvasErrorResponse(err: unknown): NextResponse {
   if (err instanceof CanvasError) return jsonError(err.message, err.status >= 400 && err.status < 600 ? err.status : 502);
-  console.error("[canvas]", err instanceof Error ? err.message : err);
-  return jsonError("Something went wrong talking to Canvas.", 502);
+  // Say what actually happened so the problem can be found and fixed.
+  const detail = err instanceof Error ? err.message : String(err);
+  console.error("[canvas]", err);
+  return jsonError(`Something went wrong on our side while talking to Canvas (${detail.slice(0, 200)}).`, 500);
 }

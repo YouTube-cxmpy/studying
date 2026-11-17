@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSelf, normalizeBaseUrl } from "@/lib/canvas";
+import { getSelf, normalizeBaseUrl, resolveCanvasSite } from "@/lib/canvas";
 import { canvasErrorResponse, guard, jsonError } from "@/lib/http";
 import { type CanvasSession, clearCanvasSession, writeCanvasSession } from "@/lib/session";
 
@@ -20,7 +20,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
   try {
     const session: CanvasSession = {
-      baseUrl: await normalizeBaseUrl(body.baseUrl),
+      baseUrl: await resolveCanvasSite(await normalizeBaseUrl(body.baseUrl)),
       accessToken: body.token.trim(),
       userName: "",
       via: "token",

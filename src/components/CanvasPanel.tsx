@@ -295,6 +295,12 @@ export function CanvasPanel({
     [overview],
   );
 
+  const graded = overview?.assignments ?? [];
+  const struggled = graded
+    .filter((a) => a.score != null && a.pointsPossible && a.score / a.pointsPossible < 0.75)
+    .slice(-4);
+  const missing = graded.filter((a) => a.missing).slice(0, 4);
+
   if (!connected) return <ConnectForm session={session} onConnected={refreshSession} />;
 
   const assignmentMaterials: CanvasMaterial[] = (overview?.assignments ?? [])
@@ -341,15 +347,59 @@ export function CanvasPanel({
             <input type="checkbox" checked={personalize} onChange={(e) => setPersonalize(e.target.checked)} />
             <span>Personalize using my upcoming assignments and recent scores in this course</span>
           </label>
-          {upcoming.length > 0 && (
-            <ul className="upcoming">
-              {upcoming.map((a) => (
-                <li key={a.id}>
-                  <span>{a.name}</span>
-                  <span className="muted">{dueLabel(a.dueAt!)}</span>
-                </li>
-              ))}
-            </ul>
+          {(upcoming.length > 0 || struggled.length > 0 || missing.length > 0 || overview.course.currentScore != null) && (
+            <div className="insights">
+              <strong>
+                How this class is going
+                {overview.course.currentScore != null && <> · {Math.round(overview.course.currentScore)}% so far</>}
+              </strong>
+              {upcoming.length > 0 && (
+                <>
+                  <h4>Coming up</h4>
+                  <ul>
+                    {upcoming.map((a) => (
+                      <li key={a.id}>
+                        <span>
+                          {a.name}
+                          {a.isQuiz ? " (quiz/test)" : ""}
+                        </span>
+                        <span className="muted">{dueLabel(a.dueAt!)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              {struggled.length > 0 && (
+                <>
+                  <h4>Worth another look</h4>
+                  <ul>
+                    {struggled.map((a) => (
+                      <li key={a.id}>
+                        <span>{a.name}</span>
+                        <span className="tag-low">
+                          {a.score}/{a.pointsPossible} ({Math.round((a.score! / a.pointsPossible!) * 100)}%)
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              {missing.length > 0 && (
+                <>
+                  <h4>Missing</h4>
+                  <ul>
+                    {missing.map((a) => (
+                      <li key={a.id}>
+                        <span>{a.name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              {personalize && (
+                <p className="muted small">Your study set will lean toward what&apos;s coming up and what scored low.</p>
+              )}
+            </div>
           )}
 
           <p className="group-heading">Pick what to study from</p>

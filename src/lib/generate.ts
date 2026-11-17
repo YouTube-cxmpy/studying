@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Part } from "./extract";
-import { QUIZ_SCHEMA, SYSTEM_PROMPT, instructionFor, sharedPreamble } from "./prompts";
-import type { GenerateEvent, Quiz, QuizQuestion, ResourceKind } from "./types";
+import { CARDS_SCHEMA, QUIZ_SCHEMA, type QuizOptions, SYSTEM_PROMPT, instructionFor, sharedPreamble } from "./prompts";
+import type { Flashcard, GenerateEvent, Quiz, QuizQuestion, ResourceKind } from "./types";
 
 type ContentBlock = Anthropic.Beta.BetaContentBlockParam;
 type Effort = "low" | "medium" | "high" | "xhigh" | "max";
@@ -111,11 +111,26 @@ export function normalizeQuiz(raw: unknown): Quiz | null {
   return { title: typeof data.title === "string" ? data.title.trim() : "Practice quiz", questions };
 }
 
+export function normalizeCards(raw: unknown): Flashcard[] | null {
+  const list = (raw as { cards?: unknown } | null)?.cards;
+  if (!Array.isArray(list)) return null;
+  const seen = new Set<string>();
+  const cards: Flashcard[] = [];
+  for (const c of list as Record<string, unknown>[]) {
+    if (!c || typeof c.front !== "string" || typeof c.back !== "string") continue;
+    const front = c.front.trim();
+    const back = c.back.trim();
+    if (!front || !back || seen.has(front.toLowerCase())) continue;
+    seen.add(front.toLowerCase());
+    cards.push({ front, back, topic: typeof c.topic === "string" && c.topic.trim() ? c.topic.trim() : "General" });
+  }
+  return cards.length >= 3 ? cards : null;
+}
+
 interface RunArgs {
   parts: Part[];
   resources: ResourceKind[];
-  quizLength: number;
-  avoid: string[];
+  quiz: QuizOptions;
   gradeLevel: string;
   focus: string;
   studentContext: string | null;
@@ -146,12 +161,13 @@ export async function runGeneration(args: RunArgs): Promise<void> {
           output_config: {
             effort: EFFORT,
             ...(kind === "quiz" ? { format: { type: "json_schema" as const, schema: QUIZ_SCHEMA } } : {}),
+            ...(kind === "cards" ? { format: { type: "json_schema" as const, schema: CARDS_SCHEMA } } : {}),
           },
           system: SYSTEM_PROMPT,
           messages: [
             {
               role: "user",
-              content: [...shared, { type: "text", text: instructionFor(kind, args.quizLength, args.avoid) }],
+              content: [...shared, { type: "text", text: instructionFor(kind, args.quiz) }],
             },
           ],
         },
@@ -168,11 +184,11 @@ export async function runGeneration(args: RunArgs): Promise<void> {
         }
         if (event.type !== "content_block_delta" || event.delta.type !== "text_delta") continue;
         text += event.delta.text;
-        if (kind === "quiz") {
-          const count = text.match(/"explanation"\s*:/g)?.length ?? 0;
+        if (kind === "quiz" || kind === "cards") {
+          const count = text.match(kind === "quiz" ? /"explanation"\s*:/g : /"back"\s*:/g)?.length ?? 0;
           if (count !== questionsSeen) {
             questionsSeen = count;
-            emit({ type: "progress", resource: "quiz", count });
+            emit({ type: "progress", resource: kind, count });
           }
         } else {
           emit({ type: "delta", resource: kind, text: event.delta.text });
@@ -196,7 +212,19 @@ export async function runGeneration(args: RunArgs): Promise<void> {
         .map((b) => b.text)
         .join("");
 
-      if (kind === "quiz") {
+      if (kind === "cards") {
+        let cards: Flashcard[] | null = null;
+        try {
+          cards = normalizeCards(JSON.parse(finalText));
+        } catch {
+          cards = null;
+        }
+        if (!cards) {
+          emit({ type: "error", resource: kind, message: "The flashcards came back in an unexpected format. Try generating them again." });
+          return;
+        }
+        emit({ type: "done", resource: kind, cards });
+      } else if (kind === "quiz") {
         let quiz: Quiz | null = null;
         try {
           quiz = normalizeQuiz(JSON.parse(finalText));

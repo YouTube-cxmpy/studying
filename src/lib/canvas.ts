@@ -89,32 +89,96 @@ export async function normalizeBaseUrl(input: string): Promise<string> {
 
 // ---- HTTP -----------------------------------------------------------------
 
+const API_HEADERS = {
+  // Canvas ids can exceed JavaScript's safe integer range.
+  Accept: "application/json+canvas-string-ids",
+};
+
+/** Canvas answers the API in JSON; anything else means this isn't a Canvas API address. */
+async function readJson<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text.replace(/^while\(1\);/, "")) as T;
+  } catch {
+    throw new CanvasError("That address answered, but not like Canvas does. Check your school's Canvas address.", 502);
+  }
+}
+
 async function request(session: CanvasSession, url: string): Promise<Response> {
   let res: Response;
   try {
     res = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${session.accessToken}`,
-        // Canvas ids can exceed JavaScript's safe integer range.
-        Accept: "application/json+canvas-string-ids",
-      },
-      redirect: "error",
+      headers: { ...API_HEADERS, Authorization: `Bearer ${session.accessToken}` },
+      redirect: "manual",
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       cache: "no-store",
     });
-  } catch {
-    throw new CanvasError("Couldn't reach Canvas. Check the address and try again.", 502);
+  } catch (err) {
+    const timedOut = err instanceof Error && err.name === "TimeoutError";
+    throw new CanvasError(
+      timedOut ? "Canvas took too long to answer. Try again in a moment." : "Couldn't reach Canvas. Check the address and try again.",
+      502,
+    );
+  }
+  if (res.status >= 300 && res.status < 400) {
+    // Canvas sends people to a login page when it doesn't accept the credential.
+    throw new CanvasError("Canvas didn't accept the sign-in and sent us to its login page. Check the token and address.", 401);
   }
   if (res.status === 401) {
+    // Canvas uses 401 both for a bad token and for "this user may not see this".
+    const body = await res.text().catch(() => "");
+    if (/"status"\s*:\s*"unauthorized"/.test(body) && !/access token/i.test(body)) {
+      throw new CanvasError("Canvas doesn't let this account see that.", 403);
+    }
     throw new CanvasError("Canvas rejected the sign-in. The token may be wrong, expired, or revoked.", 401);
   }
   if (res.status === 403 && res.headers.get("x-rate-limit-remaining") === "0.0") {
     throw new CanvasError("Canvas is rate-limiting requests. Wait a moment and try again.", 429);
   }
+  if (res.status === 403) throw new CanvasError("Canvas doesn't let this account see that.", 403);
+  if (res.status === 404) throw new CanvasError("Canvas couldn't find that. It may have been removed or unpublished.", 404);
   if (!res.ok) {
-    throw new CanvasError(`Canvas returned an error (${res.status}).`, res.status);
+    throw new CanvasError(`Canvas returned an error (${res.status}). Try again in a moment.`, res.status >= 500 ? 502 : res.status);
   }
   return res;
+}
+
+/**
+ * Finds the real Canvas site behind what the student typed, before any token is
+ * sent. Follows a school's redirect (e.g. canvas.school.edu → school.instructure.com)
+ * and confirms the address really speaks the Canvas API.
+ */
+export async function resolveCanvasSite(baseUrl: string): Promise<string> {
+  let origin = baseUrl;
+  for (let hop = 0; hop < 4; hop++) {
+    let res: Response;
+    try {
+      res = await fetch(`${origin}/api/v1/courses`, {
+        headers: API_HEADERS,
+        redirect: "manual",
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        cache: "no-store",
+      });
+    } catch {
+      throw new CanvasError(`Couldn't reach ${new URL(origin).host}. Check your school's Canvas address.`, 502);
+    }
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get("location");
+      const next = location ? new URL(location, origin) : null;
+      if (next && next.origin !== origin) {
+        origin = (await assertSafeUrl(next.origin)).origin;
+        continue;
+      }
+    }
+    const type = res.headers.get("content-type") ?? "";
+    // A real Canvas answers this unauthenticated request with a JSON 401.
+    if ((res.status === 401 || res.ok) && type.includes("json")) return origin;
+    break;
+  }
+  throw new CanvasError(
+    `${new URL(origin).host} doesn't look like a Canvas site. Use the address you see when you're in Canvas, like myschool.instructure.com.`,
+    400,
+  );
 }
 
 function apiUrl(session: CanvasSession, path: string, params?: Record<string, string | string[]>): string {
@@ -127,7 +191,7 @@ function apiUrl(session: CanvasSession, path: string, params?: Record<string, st
 
 async function getOne<T>(session: CanvasSession, path: string, params?: Record<string, string | string[]>): Promise<T> {
   const res = await request(session, apiUrl(session, path, params));
-  return (await res.json()) as T;
+  return readJson<T>(res);
 }
 
 /** Follows Canvas's Link-header pagination, bounded so one request can't crawl forever. */
@@ -141,7 +205,9 @@ async function getAll<T>(
   let url: string | null = apiUrl(session, path, { per_page: "100", ...params });
   for (let page = 0; url && page < maxPages; page++) {
     const res = await request(session, url);
-    out.push(...((await res.json()) as T[]));
+    const page_ = await readJson<T[]>(res);
+    if (!Array.isArray(page_)) break;
+    out.push(...page_);
     const next = /<([^>]+)>;\s*rel="next"/.exec(res.headers.get("link") ?? "")?.[1] ?? null;
     // Only follow pagination links that stay on the same Canvas site.
     url = next && new URL(next).origin === new URL(session.baseUrl).origin ? next : null;
@@ -208,7 +274,7 @@ async function tokenRequest(config: OAuthConfig, body: Record<string, string>): 
     cache: "no-store",
   });
   if (!res.ok) throw new CanvasError("Canvas sign-in failed. Please try connecting again.", 401);
-  return (await res.json()) as TokenResponse;
+  return readJson<TokenResponse>(res);
 }
 
 export async function exchangeOAuthCode(config: OAuthConfig, code: string): Promise<CanvasSession> {

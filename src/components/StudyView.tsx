@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { downloadText, slugify } from "@/lib/client";
-import type { MaterialSummary, ResourceKind, StudySet } from "@/lib/types";
+import type { MaterialSummary, QuizAttempt, ResourceKind, StudySet } from "@/lib/types";
+import { Flashcards } from "./Flashcards";
 import { Markdown, headingsOf } from "./Markdown";
-import { Quiz } from "./Quiz";
+import { type NewQuizOptions, Quiz } from "./Quiz";
 
 export type Tab = ResourceKind | "notes";
 export type Status = "idle" | "waiting" | "streaming" | "done" | "error";
@@ -13,6 +14,7 @@ export type ResourceStates = Record<ResourceKind, { status: Status; error?: stri
 const TABS: { kind: Tab; label: string; short: string; blurb: string }[] = [
   { kind: "lesson", label: "Full lesson", short: "Lesson", blurb: "Everything, explained" },
   { kind: "review", label: "Short review", short: "Review", blurb: "The essentials" },
+  { kind: "cards", label: "Flashcards", short: "Cards", blurb: "Quick recall" },
   { kind: "quiz", label: "Practice quiz", short: "Quiz", blurb: "Test yourself" },
   { kind: "notes", label: "My notes", short: "Notes", blurb: "In your own words" },
 ];
@@ -195,6 +197,9 @@ export function StudyView({
   onRetry,
   onQuizFinish,
   onNewQuiz,
+  onKnown,
+  onMakeCards,
+  cardsProgress,
   onAddToNotes,
   onNotes,
   onCourse,
@@ -210,8 +215,12 @@ export function StudyView({
   tab: Tab;
   setTab: (tab: Tab) => void;
   onRetry?: (kind: ResourceKind) => void;
-  onQuizFinish: (result: { correct: number; total: number; points: number }) => void;
-  onNewQuiz?: () => void;
+  onQuizFinish: (attempt: QuizAttempt, coveredAll: boolean) => void;
+  onNewQuiz?: (options: NewQuizOptions) => void;
+  onKnown: (known: string[]) => void;
+  /** Writes flashcards for an older set that has none. */
+  onMakeCards?: () => void;
+  cardsProgress: number;
   onAddToNotes: (text: string) => void;
   onNotes: (notes: string) => void;
   onCourse: (course: string) => void;
@@ -284,12 +293,30 @@ export function StudyView({
         {tab === "review" && (
           <Document kind="review" text={set.review} state={states.review} title={set.title} onRetry={retry("review")} />
         )}
+        {tab === "cards" &&
+          (set.cards?.length ? (
+            <Flashcards key={set.id} cards={set.cards} known={set.known ?? []} onKnown={onKnown} />
+          ) : states.cards.status === "error" ? (
+            <Failed message={states.cards.error ?? "The flashcards couldn't be generated."} onRetry={retry("cards")} />
+          ) : states.cards.status === "idle" ? (
+            <div className="empty">
+              <p className="muted">This study set doesn&apos;t have flashcards yet.</p>
+              {onMakeCards && (
+                <button className="btn btn-primary" onClick={onMakeCards}>
+                  Make flashcards
+                </button>
+              )}
+            </div>
+          ) : (
+            <Waiting label={cardsProgress > 0 ? `Writing your flashcards… ${cardsProgress} so far` : "Writing your flashcards…"} />
+          ))}
         {tab === "quiz" &&
           (set.quiz ? (
             <Quiz
               key={`${set.id}:${set.pastQuestions?.length ?? 0}`}
               quiz={set.quiz}
               best={set.bestScore}
+              attempts={set.attempts ?? []}
               onFinish={onQuizFinish}
               onNewQuiz={onNewQuiz}
               onAddToNotes={onAddToNotes}

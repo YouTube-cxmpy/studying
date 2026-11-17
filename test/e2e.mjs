@@ -45,7 +45,7 @@ try {
   run("npx", ["next", "dev", "-p", "3100", "-H", "127.0.0.1"], {
     ANTHROPIC_API_KEY: "test-key",
     ANTHROPIC_BASE_URL: "http://127.0.0.1:4011",
-    CANVAS_ALLOW_INSECURE_HOSTS: "127.0.0.1:4010",
+    CANVAS_ALLOW_INSECURE_HOSTS: "127.0.0.1:4010,127.0.0.1:3100",
     SESSION_SECRET: "e2e-secret",
     CANVAS_OAUTH_BASE_URL: "http://127.0.0.1:4010",
     CANVAS_CLIENT_ID: "oauth-client",
@@ -92,6 +92,11 @@ try {
   await page.getByText("must use https").waitFor();
   step("internal addresses are refused");
 
+  await page.getByPlaceholder("myschool.instructure.com").fill("http://127.0.0.1:3100");
+  await page.getByRole("button", { name: "Connect Canvas" }).last().click();
+  await page.getByText("doesn't look like a Canvas site").waitFor();
+  step("an address that isn't Canvas gets a clear message");
+
   await page.getByPlaceholder("myschool.instructure.com").fill("http://127.0.0.1:4010/courses/1");
   await page.getByPlaceholder("Paste the token from Canvas").fill("wrong");
   await page.getByRole("button", { name: "Connect Canvas" }).last().click();
@@ -116,6 +121,9 @@ try {
   await page.getByText("Pick what to study from").waitFor();
   await page.getByText("Your school hides files").waitFor();
   await page.getByText("Unit 4 Test: Cells & Transport").first().waitFor();
+  await page.getByText("How this class is going · 85% so far").waitFor();
+  await page.getByText("12/20 (60%)").waitFor();
+  assert.ok(await page.locator(".insights").getByText("Microscope Lab").count(), "missing work is listed");
   assert.equal(await page.getByRole("checkbox", { name: /Unit 4 Test/ }).isDisabled(), true, "quizzes can't be imported");
   await page.getByRole("checkbox", { name: /page\s*Cell Membrane Notes/ }).first().check();
   await page.getByRole("checkbox", { name: /Transport Summary/ }).check();
@@ -150,10 +158,21 @@ try {
   if (shots) await page.screenshot({ path: path.join(out, "04-review.png") });
   step("review renders");
 
+  await page.getByRole("tab", { name: "Flashcards" }).click();
+  await page.getByText("You know 0 of 4").waitFor();
+  await page.locator(".flashcard").click();
+  await page.getByText("Two layers of phospholipids").waitFor();
+  await page.getByRole("button", { name: "Got it" }).click();
+  await page.getByText("You know 1 of 4").waitFor();
+  await page.getByRole("button", { name: "Still learning 3" }).click();
+  assert.ok(await page.getByText("1 / 3").count(), "the deck can be narrowed to cards still being learned");
+  if (shots) await page.screenshot({ path: path.join(out, "04b-cards.png") });
+  step("flashcards flip and remember what you know");
+
   // --- What was sent to the model -----------------------------------------------------------
-  assert.equal(requests.length, 3, "three model requests");
+  assert.equal(requests.length, 4, "four model requests");
   const byKind = Object.fromEntries(requests.map((r) => [r.kind, r]));
-  assert.deepEqual(Object.keys(byKind).sort(), ["lesson", "quiz", "review"]);
+  assert.deepEqual(Object.keys(byKind).sort(), ["cards", "lesson", "quiz", "review"]);
   assert.ok(byKind.lesson.at <= byKind.review.at && byKind.lesson.at <= byKind.quiz.at, "lesson goes first to warm the cache");
   const shared = (r) => JSON.stringify(r.body.messages[0].content.slice(0, -1));
   assert.equal(shared(byKind.lesson), shared(byKind.review), "shared prefix is byte-identical (lesson/review)");
@@ -174,7 +193,7 @@ try {
 
   // --- Quiz ------------------------------------------------------------------------------------
   await page.getByRole("tab", { name: /Practice quiz/ }).click();
-  await page.getByText("10 questions.").waitFor();
+  await page.getByText("10 questions across 3 topics").waitFor();
   assert.equal(await page.locator(".timer, [role=timer]").count(), 0, "there is no timer");
   assert.equal(await page.getByText(/Timed/).count(), 0, "no timed option");
   await page.getByRole("button", { name: "Start quiz" }).click();
@@ -190,7 +209,8 @@ try {
     if (i === 1 && shots) await page.screenshot({ path: path.join(out, "06-feedback.png") });
     await page.keyboard.press("Enter");
   }
-  await page.getByText("8/10").waitFor();
+  await page.getByText("8/10", { exact: true }).waitFor();
+  await page.getByText("By level").waitFor();
   await page.getByText("By topic").waitFor();
   await page.getByText("Review what you missed").waitFor();
   if (shots) await page.screenshot({ path: path.join(out, "07-results.png"), fullPage: true });
@@ -207,25 +227,44 @@ try {
 
   // --- New quiz, notes and classes ------------------------------------------------------------------
   await page.getByRole("tab", { name: /Practice quiz/ }).click();
-  await page.getByRole("button", { name: "Start quiz" }).click();
+  await page.getByText("Your progress").waitFor();
+  await page.getByText("1 attempt · average 80%").waitFor();
+  if (shots) await page.screenshot({ path: path.join(out, "07a-setup.png"), fullPage: true });
+  // Options narrow the quiz: one topic off, then back on.
+  await page.locator(".topic-chips").getByRole("button", { name: "Active transport" }).click();
+  await page.getByRole("button", { name: /Start quiz · 7 questions/ }).waitFor();
+  await page.locator(".topic-chips").getByRole("button", { name: "Active transport" }).click();
+  await page.getByRole("radio", { name: "Test", exact: true }).click();
+  await page.getByRole("button", { name: /Start quiz · 10 questions/ }).click();
   for (let i = 0; i < 10; i++) {
     await page.getByText(`Question ${i + 1}`, { exact: false }).first().waitFor();
     const trueFalse = (await page.locator(".tile").count()) === 2;
+    if (i === 1) {
+      await page.getByRole("button", { name: /50\/50/ }).click();
+      assert.equal(await page.locator(".tile.is-gone").count(), 2, "50/50 removes two wrong answers");
+      assert.equal(await page.locator(".tile.is-gone", { hasText: "Osmosis" }).count(), 0, "never the right one");
+    }
     const pick = i === 0 ? /: Exocytosis$/ : trueFalse ? /: False$/ : /: Osmosis$/;
     await page.getByRole("button", { name: pick }).click();
-    await page.keyboard.press("Enter");
+    assert.equal(await page.locator(".feedback").count(), 0, "test mode gives no feedback until the end");
   }
+  await page.getByText("Test results").waitFor();
   await page.getByText("9/10", { exact: true }).waitFor();
+  await page.getByText("Up 10 points from your last attempt.").waitFor();
   await page.getByRole("button", { name: "Add missed to my notes" }).click();
   await page.getByRole("button", { name: "Added to notes" }).waitFor();
   requests.length = 0;
-  await page.getByRole("button", { name: "New quiz, different questions" }).click();
+  await page.getByRole("radio", { name: "Harder" }).click();
+  await page.getByRole("radio", { name: "20", exact: true }).click();
+  await page.getByRole("button", { name: "Write my new quiz" }).click();
   await page.getByRole("button", { name: "Start quiz" }).waitFor({ timeout: 60_000 });
   assert.equal(requests.length, 1, "a new quiz is a single request");
   assert.equal(requests[0].kind, "quiz");
   const nq = JSON.stringify(requests[0].body.messages[0].content);
   assert.ok(nq.includes("<already_asked>") && nq.includes("Question 1: which process moves water"), "earlier questions are passed to avoid");
   assert.ok(nq.includes("phospholipid bilayer"), "the lesson is the material for the new quiz");
+  assert.ok(nq.includes("20 multiple-choice") && nq.includes("challenging quiz"), "length and difficulty choices reach the model");
+  assert.ok(nq.includes('has been missing questions on these topics: \\"Membrane structure\\"'), "the new quiz leans on missed topics");
   assert.equal(await page.getByText("Best so far").count(), 0, "best score resets with the new quiz");
   await page.getByRole("tab", { name: "My notes" }).click();
   const noteBox = page.locator("#set-notes");

@@ -2,12 +2,13 @@
 
 import { useRef, useState } from "react";
 import { formatBytes, prepareFile } from "@/lib/client";
-import type { SessionInfo } from "@/lib/types";
+import type { QuizDifficulty, SessionInfo } from "@/lib/types";
 import { CanvasPanel, type CanvasSelection } from "./CanvasPanel";
 
 export interface CreateOptions {
   gradeLevel: string;
   quizLength: number;
+  difficulty: QuizDifficulty;
   focus: string;
   /** Class this set is filed under. Blank falls back to the chosen Canvas course. */
   course: string;
@@ -204,6 +205,29 @@ export function Create({
             </div>
           </div>
         </div>
+        <div className="field">
+          <span id="quiz-difficulty-label">Quiz difficulty</span>
+          <div className="segmented" role="radiogroup" aria-labelledby="quiz-difficulty-label">
+            {(
+              [
+                ["easier", "Easier"],
+                ["mixed", "Mixed"],
+                ["harder", "Harder"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={options.difficulty === value}
+                className={options.difficulty === value ? "is-on" : ""}
+                onClick={() => setOptions({ ...options, difficulty: value })}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
         <label className="field">
           <span>
             Class <span className="muted">(optional{canvas ? `, defaults to ${canvas.courseName}` : ""})</span>
@@ -248,7 +272,7 @@ export function Create({
         </button>
         <p className="muted">
           {hasMaterial
-            ? `From ${summary.join(" + ")}: a full lesson, a short review, and a ${options.quizLength}-question quiz.`
+            ? `From ${summary.join(" + ")}: a full lesson, a short review, flashcards, and a ${options.quizLength}-question quiz.`
             : "Add a file, paste notes, or pick Canvas items to begin."}
         </p>
       </div>

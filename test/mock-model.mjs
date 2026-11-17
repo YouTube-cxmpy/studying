@@ -62,6 +62,15 @@ Membranes control what enters and leaves the cell.
 1. Passive transport needs no ATP.
 `;
 
+const CARDS = {
+  cards: [
+    { topic: "Membrane structure", front: "Phospholipid bilayer", back: "Two layers of phospholipids with hydrophobic tails facing inward." },
+    { topic: "Passive transport", front: "What is osmosis?", back: "Diffusion of water across a selectively permeable membrane." },
+    { topic: "Active transport", front: "What powers the Na⁺/K⁺ pump?", back: "ATP." },
+    { topic: "Passive transport", front: "Facilitated diffusion", back: "Passive movement through channel or carrier proteins." },
+  ],
+};
+
 const topics = ["Membrane structure", "Passive transport", "Active transport"];
 function quiz(count) {
   return {
@@ -85,7 +94,7 @@ const server = http.createServer(async (req, res) => {
   for await (const chunk of req) raw += chunk;
   const body = JSON.parse(raw);
   const instruction = body.messages[0].content.at(-1).text;
-  const kind = body.output_config?.format ? "quiz" : /SHORT REVIEW/.test(instruction) ? "review" : "lesson";
+  const kind = /FLASHCARDS/.test(instruction) ? "cards" : body.output_config?.format ? "quiz" : /SHORT REVIEW/.test(instruction) ? "review" : "lesson";
   requests.push({ kind, body, beta: req.headers["anthropic-beta"], at: Date.now() });
 
   if (process.env.MOCK_MODEL_FAIL === kind) {
@@ -95,7 +104,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   const count = Number(/(\d+) multiple-choice/.exec(instruction)?.[1] ?? 10);
-  const text = kind === "quiz" ? JSON.stringify(quiz(count)) : kind === "review" ? REVIEW : LESSON;
+  const text = kind === "quiz" ? JSON.stringify(quiz(count)) : kind === "cards" ? JSON.stringify(CARDS) : kind === "review" ? REVIEW : LESSON;
 
   res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
   const event = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`);

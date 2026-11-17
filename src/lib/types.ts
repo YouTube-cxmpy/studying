@@ -1,6 +1,7 @@
 // Types shared by the server routes and the browser UI.
 
-export type ResourceKind = "lesson" | "review" | "quiz";
+export type ResourceKind = "lesson" | "review" | "cards" | "quiz";
+export type QuizDifficulty = "mixed" | "easier" | "harder";
 
 export interface QuizQuestion {
   question: string;
@@ -9,6 +10,23 @@ export interface QuizQuestion {
   explanation: string;
   topic: string;
   difficulty: "recall" | "understanding" | "application";
+}
+
+export interface Flashcard {
+  front: string;
+  back: string;
+  topic: string;
+}
+
+/** One finished run of a quiz, kept so progress can be shown over time. */
+export interface QuizAttempt {
+  at: number;
+  mode: "practice" | "test";
+  correct: number;
+  total: number;
+  points: number;
+  /** topic → [correct, asked] */
+  topics: Record<string, [number, number]>;
 }
 
 export interface Quiz {
@@ -29,8 +47,8 @@ export type GenerateEvent =
   | { type: "materials"; items: MaterialSummary[]; warnings: string[]; personalized: boolean }
   | { type: "start"; resource: ResourceKind }
   | { type: "delta"; resource: "lesson" | "review"; text: string }
-  | { type: "progress"; resource: "quiz"; count: number }
-  | { type: "done"; resource: ResourceKind; quiz?: Quiz; truncated?: boolean; text?: string }
+  | { type: "progress"; resource: "quiz" | "cards"; count: number }
+  | { type: "done"; resource: ResourceKind; quiz?: Quiz; cards?: Flashcard[]; truncated?: boolean; text?: string }
   | { type: "error"; resource?: ResourceKind; message: string }
   | { type: "end" };
 
@@ -39,6 +57,9 @@ export interface GenerateOptions {
   quizLength: number;
   gradeLevel: string;
   focus: string;
+  difficulty?: QuizDifficulty;
+  /** Topics the student keeps missing; a new quiz leans toward these. */
+  focusTopics?: string[];
   /** Questions from earlier quizzes on this material; a new quiz must not repeat them. */
   avoid?: string[];
   canvas?: {
@@ -106,6 +127,10 @@ export interface StudySet {
   lesson: string;
   review: string;
   quiz: Quiz | null;
+  cards?: Flashcard[] | null;
+  /** Fronts of the flashcards the student marked as known. */
+  known?: string[];
+  attempts?: QuizAttempt[];
   bestScore?: { correct: number; total: number; points: number };
   /** Free-form notes the student writes for this set. */
   notes?: string;

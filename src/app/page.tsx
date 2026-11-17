@@ -7,16 +7,18 @@ import { Create, type CreateOptions } from "@/components/Create";
 import { titleOf } from "@/components/Markdown";
 import { type ResourceStates, StudyView, type Tab } from "@/components/StudyView";
 import { RequestError, api, loadClassNotes, loadLibrary, newId, saveClassNotes, saveLibrary, streamGenerate } from "@/lib/client";
-import type { GenerateOptions, MaterialSummary, ResourceKind, SessionInfo, StudySet } from "@/lib/types";
+import type { NewQuizOptions } from "@/components/Quiz";
+import type { GenerateOptions, MaterialSummary, QuizAttempt, QuizDifficulty, ResourceKind, SessionInfo, StudySet } from "@/lib/types";
 
-const ALL: ResourceKind[] = ["lesson", "review", "quiz"];
+const ALL: ResourceKind[] = ["lesson", "review", "cards", "quiz"];
 const OPTIONS_KEY = "studykit.options.v1";
-const DEFAULT_OPTIONS: CreateOptions = { gradeLevel: "High school", quizLength: 15, focus: "", course: "" };
+const DEFAULT_OPTIONS: CreateOptions = { gradeLevel: "High school", quizLength: 15, difficulty: "mixed", focus: "", course: "" };
 
 function idleStates(set?: StudySet): ResourceStates {
   return {
     lesson: { status: set?.lesson ? "done" : "idle" },
     review: { status: set?.review ? "done" : "idle" },
+    cards: { status: set?.cards?.length ? "done" : "idle" },
     quiz: { status: set?.quiz ? "done" : "idle" },
   };
 }
@@ -65,6 +67,7 @@ export default function Home() {
   const [classOpen, setClassOpen] = useState<string | null>(null);
   const [classNotes, setClassNotes] = useState<Record<string, string>>({});
   const [quizProgress, setQuizProgress] = useState(0);
+  const [cardsProgress, setCardsProgress] = useState(0);
   const [materials, setMaterials] = useState<MaterialSummary[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [personalized, setPersonalized] = useState(false);
@@ -153,7 +156,7 @@ export default function Home() {
       resources: ResourceKind[],
       base: StudySet | null,
       // A fresh quiz on a saved set: write from this text and steer away from these questions.
-      extra?: { text: string; avoid: string[]; quizLength: number },
+      extra?: { text: string; avoid?: string[]; quizLength?: number; difficulty?: QuizDifficulty; focusTopics?: string[] },
     ) => {
       detach();
       const controller = new AbortController();
@@ -165,6 +168,8 @@ export default function Home() {
         quizLength: extra?.quizLength ?? options.quizLength,
         gradeLevel: options.gradeLevel,
         focus: extra ? "" : options.focus,
+        difficulty: extra?.difficulty ?? options.difficulty,
+        focusTopics: extra?.focusTopics,
         avoid: extra?.avoid,
         canvas: !extra && canvas ? { courseId: canvas.courseId, refs: canvas.refs, personalize: canvas.personalize } : undefined,
       };
@@ -188,6 +193,7 @@ export default function Home() {
             lesson: "",
             review: "",
             quiz: null,
+            cards: null,
             notes: "",
             course: options.course.trim() || canvas?.courseName || "",
           };
@@ -195,6 +201,7 @@ export default function Home() {
       const previousQuiz = base?.quiz ?? null;
       for (const kind of resources) {
         if (kind === "quiz") draft.quiz = null;
+        else if (kind === "cards") draft.cards = null;
         else draft[kind] = "";
       }
       let dirty = false;
@@ -231,6 +238,7 @@ export default function Home() {
               return next;
             });
             setQuizProgress(0);
+            setCardsProgress(0);
             setTab(resources[0]);
             setCanRetry(true);
             window.scrollTo({ top: 0 });
@@ -252,16 +260,20 @@ export default function Home() {
               dirty = true;
               break;
             case "progress":
-              setQuizProgress(event.count);
+              if (event.resource === "quiz") setQuizProgress(event.count);
+              else setCardsProgress(event.count);
               break;
             case "done":
               if (event.resource === "quiz") {
                 draft.quiz = event.quiz ?? null;
-                if (extra) {
+                if (extra?.avoid) {
                   // The old best score belonged to the old questions.
                   draft.pastQuestions = extra.avoid;
                   delete draft.bestScore;
                 }
+              } else if (event.resource === "cards") {
+                draft.cards = event.cards ?? null;
+                draft.known = [];
               } else if (event.text) draft[event.resource] = event.text;
               refreshTitle();
               dirty = true;
@@ -309,7 +321,7 @@ export default function Home() {
             });
           }
         }
-        if (owned && extra && started && !finished.has("quiz")) {
+        if (owned && extra?.avoid && started && !finished.has("quiz")) {
           // Keep the quiz they had rather than leaving them with none.
           draft.quiz = previousQuiz;
           setCurrent({ ...draft });
@@ -322,6 +334,7 @@ export default function Home() {
           for (const kind of resources) {
             if (finished.has(kind)) continue;
             if (kind === "quiz") saved.quiz = null;
+            else if (kind === "cards") saved.cards = null;
             else saved[kind] = "";
           }
           persist(saved);
@@ -386,10 +399,15 @@ export default function Home() {
   const removeSet = (id: string) => updateLibrary(libraryRef.current.filter((s) => s.id !== id));
 
   const onQuizFinish = useCallback(
-    (result: { correct: number; total: number; points: number }) => {
-      const best = currentRef.current?.bestScore;
-      if (best && best.total === result.total && best.points >= result.points) return;
-      patchSet({ bestScore: result });
+    (attempt: QuizAttempt, coveredAll: boolean) => {
+      const set = currentRef.current;
+      if (!set) return;
+      const patch: Partial<StudySet> = { attempts: [...(set.attempts ?? []), attempt].slice(-50) };
+      const best = set.bestScore;
+      if (coveredAll && (!best || best.total !== attempt.total || attempt.points > best.points)) {
+        patch.bestScore = { correct: attempt.correct, total: attempt.total, points: attempt.points };
+      }
+      patchSet(patch);
     },
     [patchSet],
   );
@@ -402,7 +420,7 @@ export default function Home() {
     [patchSet],
   );
 
-  const newQuiz = () => {
+  const newQuiz = (choice: NewQuizOptions) => {
     const set = currentRef.current;
     if (!set?.quiz || generating) return;
     // The original files aren't kept, so the lesson (or review) stands in as the material.
@@ -412,7 +430,21 @@ export default function Home() {
       return;
     }
     const avoid = [...new Set([...(set.pastQuestions ?? []), ...set.quiz.questions.map((q) => q.question)])].slice(-150);
-    void generate(["quiz"], set, { text: material, avoid, quizLength: set.quiz.questions.length });
+    void generate(["quiz"], set, {
+      text: material,
+      avoid,
+      quizLength: choice.length,
+      difficulty: choice.difficulty,
+      focusTopics: choice.focusTopics,
+    });
+  };
+
+  /** Older study sets were made before flashcards existed. */
+  const makeCards = () => {
+    const set = currentRef.current;
+    const material = set?.lesson || set?.review;
+    if (!set || !material || generating) return;
+    void generate(["cards"], set, { text: material });
   };
 
   const setClassNote = (name: string, value: string) => {
@@ -442,6 +474,13 @@ export default function Home() {
     </li>
   );
   const unfiled = library.filter((s) => !s.course?.trim());
+  const allAttempts = library.flatMap((s) => s.attempts ?? []);
+  const stats = {
+    attempts: allAttempts.length,
+    average: allAttempts.length
+      ? Math.round((allAttempts.reduce((n, a) => n + a.correct / a.total, 0) / allAttempts.length) * 100)
+      : 0,
+  };
 
   return (
     <>
@@ -494,9 +533,16 @@ export default function Home() {
             personalized={personalized}
             tab={tab}
             setTab={setTab}
-            onRetry={canRetry && !generating ? (kind) => void generate([kind], current) : undefined}
+            onRetry={
+              canRetry && !generating
+                ? (kind) => (kind === "cards" && current.lesson ? makeCards() : void generate([kind], current))
+                : undefined
+            }
             onQuizFinish={onQuizFinish}
             onNewQuiz={generating ? undefined : newQuiz}
+            onKnown={(known) => patchSet({ known })}
+            onMakeCards={!generating && (current.lesson || current.review) ? makeCards : undefined}
+            cardsProgress={cardsProgress}
             onAddToNotes={onAddToNotes}
             onNotes={(notes) => patchSet({ notes })}
             onCourse={(course) => patchSet({ course })}
@@ -518,11 +564,35 @@ export default function Home() {
           <div className="home">
             <div className="home-main">
               <div className="hero">
-                <h1>Turn any class material into a way to learn it.</h1>
+                <h1>
+                  Turn any class material into a way to <em>learn it</em>.
+                </h1>
                 <p>
-                  Upload notes, slides or readings and get a full lesson, a short review, and a tap-to-answer practice
-                  quiz — built from your material.
+                  Upload notes, slides or readings, or pull them straight from Canvas. Everything below is written from
+                  your material.
                 </p>
+                <div className="feature-row">
+                  <div className="feature" style={{ "--c": "var(--lesson)" } as React.CSSProperties}>
+                    <i>L</i>
+                    <strong>Full lesson</strong>
+                    <span>Every idea explained, with examples</span>
+                  </div>
+                  <div className="feature" style={{ "--c": "var(--review)" } as React.CSSProperties}>
+                    <i>R</i>
+                    <strong>Short review</strong>
+                    <span>The essentials for the night before</span>
+                  </div>
+                  <div className="feature" style={{ "--c": "var(--cards)" } as React.CSSProperties}>
+                    <i>F</i>
+                    <strong>Flashcards</strong>
+                    <span>Flip, sort, and track what you know</span>
+                  </div>
+                  <div className="feature" style={{ "--c": "var(--quiz)" } as React.CSSProperties}>
+                    <i>Q</i>
+                    <strong>Practice quiz</strong>
+                    <span>Tap to answer, see why, try again</span>
+                  </div>
+                </div>
               </div>
               <Create
                 files={files}
@@ -553,6 +623,22 @@ export default function Home() {
             </div>
 
             <aside className="library">
+              {stats.attempts > 0 && (
+                <div className="stat-row" aria-label="Your study stats">
+                  <div>
+                    <strong>{library.length}</strong>
+                    <span>study sets</span>
+                  </div>
+                  <div>
+                    <strong>{stats.attempts}</strong>
+                    <span>quizzes taken</span>
+                  </div>
+                  <div>
+                    <strong>{stats.average}%</strong>
+                    <span>average score</span>
+                  </div>
+                </div>
+              )}
               <h2>Your study sets</h2>
               {library.length === 0 ? (
                 <p className="muted">Study sets you create are saved in this browser, grouped by class.</p>

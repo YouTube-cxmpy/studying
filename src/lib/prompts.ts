@@ -1,4 +1,4 @@
-import type { ResourceKind } from "./types";
+import type { QuizDifficulty, ResourceKind } from "./types";
 
 // The system prompt and the material are identical across the three requests
 // (lesson, review, quiz) so they can share one prompt-cache entry. Only the
@@ -70,15 +70,42 @@ Structure:
 
 Write the review directly — no preamble before the title and no closing remarks.`;
 
-function quizPrompt(count: number, avoid: string[] = []): string {
+export interface QuizOptions {
+  count: number;
+  difficulty: QuizDifficulty;
+  focusTopics: string[];
+  avoid: string[];
+}
+
+const CARDS = `Write the FLASHCARDS for this material.
+
+These are for quick memorization practice: the student sees the front, tries to recall, then flips the card.
+- Make one card for every key term, definition, formula, date, person, step of a process and core concept in the material. Usually that is between 15 and 40 cards; follow the material rather than a target number.
+- "front" is a short prompt: a term to define, or a direct question ("What does RuBisCO do?"). One idea per card, under about 100 characters.
+- "back" is the answer in one or two short sentences, under about 220 characters, complete enough to check yourself against. For a formula, give the formula and what each symbol means.
+- Don't make cards whose answer is a list of more than three things; split them.
+- "topic" is a short label (two to four words) for the part of the material the card covers; reuse the same label for cards on the same topic.
+- Order the cards so related ideas sit together, basics first.
+- You can use inline LaTeX ($...$) when math calls for it.`;
+
+function quizPrompt({ count, difficulty, focusTopics, avoid }: QuizOptions): string {
   const fresh = avoid.length
     ? `\n\nThe student has already played the questions listed below, so this must be a completely NEW quiz. Do not reuse or reword any of them. Test facts and ideas they did not cover; where an important idea has to come up again, come at it from a different angle with a new scenario, new numbers or a new example.\n\n<already_asked>\n${avoid.map((q) => `- ${q.replace(/\s+/g, " ").slice(0, 300)}`).join("\n")}\n</already_asked>`
+    : "";
+  const mix =
+    difficulty === "easier"
+      ? `This student asked for an easier quiz to build confidence: make about half the questions "recall", most of the rest "understanding", and only a few "application". Keep the wording simple and direct.`
+      : difficulty === "harder"
+        ? `This student asked for a challenging quiz: make about half the questions "application", most of the rest "understanding", and only a few "recall". Use multi-step problems, unfamiliar scenarios and close distractors that need real understanding to rule out.`
+        : `Mix the levels: roughly a third "recall" (facts, terms, definitions), a third "understanding" (why, how, compare, explain), and a third "application" (use the idea on a new example, solve a problem, interpret a scenario).`;
+  const focus = focusTopics.length
+    ? `\n\nThe student has been missing questions on these topics: ${focusTopics.map((t) => `"${t.slice(0, 60)}"`).join(", ")}. Put about two thirds of the questions on them, testing each from several angles, and use the rest to keep the other topics fresh.`
     : "";
   return `Write the PRACTICE QUIZ for this material: ${count} multiple-choice questions that the student will play in a fast, game-style quiz where they tap one of the answer tiles.
 
 What makes a question good here:
 - It tests something that matters in the material and is fully answerable from it. Spread the questions across all the major topics in proportion to their importance; don't cluster on the first few pages.
-- Mix the levels: roughly a third "recall" (facts, terms, definitions), a third "understanding" (why, how, compare, explain), and a third "application" (use the idea on a new example, solve a problem, interpret a scenario). Order the quiz from easier to harder.
+- ${mix} Order the quiz from easier to harder.
 - Exactly four options with exactly one correct answer that is unambiguously right. The three wrong options should be plausible — build them from the mistakes and misconceptions students really have — and clearly wrong to someone who knows the material. Use two options ("True", "False") only where a true/false question is the natural form, and for at most a fifth of the quiz.
 - Keep it quick to read: questions under about 200 characters and options under about 80, with all four options similar in length and style so the answer can't be guessed from its shape. No "all of the above" or "none of the above", no trick wording, no double negatives.
 - Each question stands on its own. The student won't have the material in front of them, so never write "according to the passage", "on slide 4" or similar; put any needed context into the question.
@@ -88,14 +115,36 @@ What makes a question good here:
 - "correctIndex" is the zero-based position of the correct option.
 - You can use inline LaTeX ($...$) in questions, options and explanations when math calls for it.
 
-Check each answer before you finish: for anything calculated, redo the calculation; for anything factual, confirm it against the material. "title" is a short name for the quiz topic.${fresh}`;
+Check each answer before you finish: for anything calculated, redo the calculation; for anything factual, confirm it against the material. "title" is a short name for the quiz topic.${focus}${fresh}`;
 }
 
-export function instructionFor(kind: ResourceKind, quizLength: number, avoid: string[] = []): string {
+export function instructionFor(kind: ResourceKind, quiz: QuizOptions): string {
   if (kind === "lesson") return LESSON;
   if (kind === "review") return REVIEW;
-  return quizPrompt(quizLength, avoid);
+  if (kind === "cards") return CARDS;
+  return quizPrompt(quiz);
 }
+
+export const CARDS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["cards"],
+  properties: {
+    cards: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["topic", "front", "back"],
+        properties: {
+          topic: { type: "string" },
+          front: { type: "string" },
+          back: { type: "string" },
+        },
+      },
+    },
+  },
+} as const;
 
 export const QUIZ_SCHEMA = {
   type: "object",

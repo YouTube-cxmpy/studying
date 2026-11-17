@@ -132,8 +132,8 @@ http
       if ((m = /^modules\/(\d+)\/items$/.exec(rest))) return send(res, 200, moduleItems[m[1]] ?? []);
       if (rest === "pages") return send(res, 200, Object.entries(pages).map(([url, p]) => ({ url, title: p.title })));
       if ((m = /^pages\/(.+)$/.exec(rest))) return pages[m[1]] ? send(res, 200, pages[m[1]]) : send(res, 404, {});
-      // Students often can't list Files; the client should cope with a 403.
-      if (rest === "files") return send(res, 403, { status: "unauthorized" });
+      // Students often can't list Files. Canvas answers that with a 401 even though the token is fine.
+      if (rest === "files") return send(res, 401, { status: "unauthorized", errors: [{ message: "user not authorized to perform that action" }] });
       if ((m = /^files\/(\d+)$/.exec(rest))) {
         const f = files[m[1]];
         return f ? send(res, 200, { ...f, body: undefined, url: `${ORIGIN}/download/${f.id}?verifier=abc` }) : send(res, 404, {});

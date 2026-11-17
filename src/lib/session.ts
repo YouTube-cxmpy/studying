@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 
 // Encrypted, httpOnly cookies. Nothing about a student is stored on the server:
 // the Canvas credential lives only in the student's own browser cookie, sealed
@@ -26,21 +26,25 @@ let cachedKey: Buffer | null = null;
 
 function secretKey(): Buffer {
   if (cachedKey) return cachedKey;
-  let secret = process.env.SESSION_SECRET?.trim();
+  // SESSION_SECRET is best. Without it, fall back to something stable on this
+  // server so sign-in still works instead of failing: the API key (never sent to
+  // the browser), then a secret file, then a per-process secret.
+  let secret = process.env.SESSION_SECRET?.trim() || process.env.ANTHROPIC_API_KEY?.trim();
   if (!secret) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("SESSION_SECRET must be set in production (openssl rand -hex 32).");
-    }
     const file = path.join(process.cwd(), ".data", "dev-session-secret");
     try {
       secret = fs.readFileSync(file, "utf8").trim();
     } catch {
       secret = crypto.randomBytes(32).toString("hex");
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, secret, { mode: 0o600 });
+      try {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, secret, { mode: 0o600 });
+      } catch {
+        // Read-only disk: the secret lasts until the server restarts.
+      }
     }
   }
-  cachedKey = crypto.createHash("sha256").update(secret).digest();
+  cachedKey = crypto.createHash("sha256").update(`studykit-session:${secret}`).digest();
   return cachedKey;
 }
 
@@ -64,11 +68,15 @@ export function unseal<T>(sealed: string | undefined): T | null {
   }
 }
 
-function cookieOptions(maxAge: number) {
+/** Browsers drop `Secure` cookies on plain http, so only mark them secure when the site is served over https. */
+async function cookieOptions(maxAge: number) {
+  const h = await headers();
+  const proto = h.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const https = proto ? proto === "https" : (process.env.APP_URL ?? "").startsWith("https://");
   return {
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
+    secure: https,
     path: "/",
     maxAge,
   };
@@ -81,7 +89,7 @@ export async function readCanvasSession(): Promise<CanvasSession | null> {
 
 export async function writeCanvasSession(session: CanvasSession): Promise<void> {
   const jar = await cookies();
-  jar.set(CANVAS_COOKIE, seal(session), cookieOptions(MAX_AGE));
+  jar.set(CANVAS_COOKIE, seal(session), await cookieOptions(MAX_AGE));
 }
 
 export async function clearCanvasSession(): Promise<void> {
@@ -91,7 +99,7 @@ export async function clearCanvasSession(): Promise<void> {
 
 export async function writeOAuthState(state: string): Promise<void> {
   const jar = await cookies();
-  jar.set(OAUTH_STATE_COOKIE, seal({ state }), cookieOptions(600));
+  jar.set(OAUTH_STATE_COOKIE, seal({ state }), await cookieOptions(600));
 }
 
 export async function takeOAuthState(): Promise<string | null> {
@@ -116,7 +124,7 @@ export function checkAccessCode(candidate: string): boolean {
 
 export async function grantAccess(): Promise<void> {
   const jar = await cookies();
-  jar.set(ACCESS_COOKIE, seal({ ok: true }), cookieOptions(MAX_AGE));
+  jar.set(ACCESS_COOKIE, seal({ ok: true }), await cookieOptions(MAX_AGE));
 }
 
 export async function hasAccess(): Promise<boolean> {

@@ -1,14 +1,17 @@
 # StudyKit
 
-Upload any learning material and get three study resources built from it:
+Upload any learning material and get four study resources built from it:
 
 1. **Full lesson** – a complete, teacher-style lesson covering everything in the material, with worked examples, check-yourself questions, a glossary and a summary.
 2. **Short review** – a two-page study guide: must-know concepts, key terms, formulas/dates, common mistakes, and a quick self-test.
-3. **Practice quiz** – a game-style quiz with no timer. Tap one of four answer tiles (or press 1–4 / A–D); points, streaks, an explanation after every answer, a per-topic breakdown, and "retry what I missed". When you finish, **New quiz, different questions** writes a fresh quiz that avoids every question you have already played.
+3. **Flashcards** – one card per key term, formula and idea. Flip, mark "Got it" or "Still learning", and drill only the ones you don't know yet.
+4. **Practice quiz** – tap one of four answer tiles (or press 1–4 / A–D), no timer.
+   - Before you start: Practice mode (explanation after each answer) or Test mode (results at the end), how many questions, which level, which topics, and whether to mix the order.
+   - While playing: a 50/50 hint that removes two wrong answers for half points, streaks, and a progress strip.
+   - Afterwards: results by topic and by level, a comparison with your last attempt, a review of every question, "retry what I missed", and a **new quiz with different questions** where you pick the length, the difficulty, and whether to focus on what you missed.
+   - Every attempt is saved, so the quiz screen shows your score history and how well you know each topic.
 
-Each study set also has a **My notes** tab (with one-click "Add missed to my notes" from the quiz results) and can be filed under a **class**. A class page brings together its study sets, class-wide notes, and the notes from each set. Connecting Canvas files new sets under the Canvas course automatically.
-
-Students can also connect **Canvas** (read-only) to import course pages, files and assignment instructions, and to personalize the resources around upcoming tests and recent scores.
+Each study set also has a **My notes** tab (with one-click "Add missed to my notes" from the quiz results) and can be filed under a **class**. A class page brings together its study sets, class-wide notes, and the notes from each set. Connecting Canvas files new sets under the Canvas course automatically, and shows how the class is going: current grade, what's coming up, low scores and missing work.
 
 ## Get the website version
 
@@ -39,7 +42,7 @@ Requires Node 20+. For a real deployment run `npm run build && npm start` and se
 | Variable | Purpose |
 | --- | --- |
 | `ANTHROPIC_API_KEY` | Required. Used on the server only. |
-| `SESSION_SECRET` | Required in production. Encrypts the Canvas session cookie. `openssl rand -hex 32` |
+| `SESSION_SECRET` | Recommended. Encrypts the Canvas session cookie (`openssl rand -hex 32`). If unset, a key derived from `ANTHROPIC_API_KEY` is used. |
 | `APP_ACCESS_CODE` | Optional but recommended on the open internet: visitors must enter this code before the app will spend your API credits. |
 | `STUDY_MODEL`, `STUDY_EFFORT` | Optional. Default `claude-opus-5-5` at `high` effort. |
 | `CANVAS_OAUTH_BASE_URL`, `CANVAS_CLIENT_ID`, `CANVAS_CLIENT_SECRET`, `CANVAS_OAUTH_SCOPES`, `APP_URL` | Optional. Turns on "Sign in with Canvas". |
@@ -92,6 +95,13 @@ browser ──multipart──▶ POST /api/generate ──▶ Claude (3 streamed
 - `src/lib/canvas.ts` is the Canvas client (pagination, string ids, OAuth refresh, download safety checks).
 - `src/lib/session.ts` seals cookies. `src/lib/http.ts` gates every API route (access code + same-origin check).
 - Study sets and quiz scores are saved in the browser's local storage, so there are no accounts or database yet.
+
+### If Canvas won't connect
+
+- Use the address you see in the browser while you're in Canvas (for example `myschool.instructure.com`). A school's own short address is followed automatically.
+- "Canvas rejected the sign-in" means the token is wrong, expired or revoked: make a new one under Account → Settings → New Access Token.
+- If the site is served over plain `http` on a non-localhost address, set `APP_URL` to that address so the sign-in cookie is accepted.
+- Any other failure now shows the underlying reason in the message, and the server log has the full error.
 
 ## Tests
 

@@ -14,7 +14,7 @@ export const maxDuration = 800;
 const MAX_BINARY_BYTES = 22 * 1024 * 1024;
 const MAX_TEXT_CHARS = 1_500_000;
 const MAX_ITEMS = 40;
-const KINDS: ResourceKind[] = ["lesson", "review", "quiz"];
+const KINDS: ResourceKind[] = ["lesson", "review", "cards", "quiz"];
 
 function parseOptions(raw: FormDataEntryValue | null): GenerateOptions | null {
   if (typeof raw !== "string") return null;
@@ -34,6 +34,10 @@ function parseOptions(raw: FormDataEntryValue | null): GenerateOptions | null {
       quizLength: Math.min(40, Math.max(5, Math.round(Number(o.quizLength) || 15))),
       gradeLevel: String(o.gradeLevel ?? "").slice(0, 60),
       focus: String(o.focus ?? "").slice(0, 600),
+      difficulty: o.difficulty === "easier" || o.difficulty === "harder" ? o.difficulty : "mixed",
+      focusTopics: Array.isArray(o.focusTopics)
+        ? o.focusTopics.filter((t): t is string => typeof t === "string" && t.trim() !== "").slice(0, 8)
+        : [],
       avoid: Array.isArray(o.avoid)
         ? o.avoid.filter((q): q is string => typeof q === "string").map((q) => q.slice(0, 300)).slice(-150)
         : [],
@@ -156,8 +160,12 @@ export async function POST(request: Request): Promise<Response> {
         await runGeneration({
           parts,
           resources: options.resources,
-          quizLength: options.quizLength,
-          avoid: options.avoid ?? [],
+          quiz: {
+            count: options.quizLength,
+            difficulty: options.difficulty ?? "mixed",
+            focusTopics: options.focusTopics ?? [],
+            avoid: options.avoid ?? [],
+          },
           gradeLevel: options.gradeLevel,
           focus: options.focus,
           studentContext,
